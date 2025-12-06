@@ -1,10 +1,25 @@
 # Node
 node_modules/
+npm-debug.log
+yarn-error.log
 
-# Rust build
-/server/target/
+# Titan build output (auto-generated — DO NOT COMMIT)
+server/routes.json
+server/action_map.json
+server/actions/*.jsbundle
+server/titan/*.jsbundle
 
+# Rust build output (auto-generated — DO NOT COMMIT)
+server/target/
+server/target/**
 
-# Logs, system files
+# Logs
 *.log
+
+# System files
 .DS_Store
+Thumbs.db
+
+# Environment files
+.env
+.env.local

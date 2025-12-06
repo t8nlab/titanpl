@@ -61,6 +61,14 @@ function initProject(name) {
     console.log(cyan(`Creating Titan project → ${target}`));
 
     copyDir(templateDir, target);
+    copyDir(templateDir, target);
+
+    [".gitignore", ".dockerignore", "Dockerfile"].forEach((file) => {
+        const src = path.join(templateDir, file);
+        const dest = path.join(target, file);
+        if (fs.existsSync(src)) fs.copyFileSync(src, dest);
+    });
+
 
     console.log(green("✔ Titan project created!"));
     console.log(cyan("Installing dependencies..."));
@@ -187,6 +195,42 @@ function startProd() {
     execSync(`"${exe}"`, { stdio: "inherit" });
 }
 
+// ------------------------------------------
+// TITAN UPDATE — Upgrade titan/ runtime
+// ------------------------------------------
+function updateTitan() {
+    const projectTitan = path.join(process.cwd(), "titan");
+    const cliTitan = path.join(__dirname, "templates", "titan");
+
+    if (!fs.existsSync(projectTitan)) {
+        console.log(red("No titan/ folder found in this project."));
+        console.log(yellow("Make sure you are inside a Titan project."));
+        return;
+    }
+
+    console.log(cyan("Titan: Updating runtime files..."));
+
+    // Backup old titan folder
+    const backupDir = path.join(process.cwd(), `titan_backup_${Date.now()}`);
+    fs.renameSync(projectTitan, backupDir);
+
+    console.log(green(`✔ Backup created → ${backupDir}`));
+
+    copyDir(cliTitan, projectTitan);
+    copyDir(templateDir, target);
+
+    [".gitignore", ".dockerignore", "Dockerfile"].forEach((file) => {
+        const src = path.join(templateDir, file);
+        const dest = path.join(target, file);
+        if (fs.existsSync(src)) fs.copyFileSync(src, dest);
+    });
+
+
+    console.log(green("✔ Titan runtime updated successfully!"));
+    console.log(cyan("Your project now has the latest Titan features."));
+}
+
+
 // ROUTER
 switch (cmd) {
     case "init":
@@ -205,6 +249,11 @@ switch (cmd) {
         startProd();
         break;
 
+    case "update":
+        updateTitan();
+        break;
+
     default:
         help();
 }
+

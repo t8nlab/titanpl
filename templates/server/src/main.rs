@@ -9,10 +9,17 @@ use axum::{
     routing::any,
     Router,
 };
-use boa_engine::{Context, Source};
+use boa_engine::{
+    Context,
+    Source
+};
+
 use serde::Deserialize;
 use serde_json::Value;
 use tokio::net::TcpListener;
+
+
+
 
 // ----------------------
 // Route structures
@@ -63,72 +70,88 @@ async fn dynamic_handler_inner(
             // ACTION ROUTE
             // --------------------------
             "action" => {
-                let action_name = route.value.as_str().unwrap_or("").trim();
-                if action_name.is_empty() {
-                    return (
-                        StatusCode::INTERNAL_SERVER_ERROR,
-                        "Invalid action name",
-                    ).into_response();
-                }
+    let action_name = route.value.as_str().unwrap_or("").trim();
+    if action_name.is_empty() {
+        return (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "Invalid action name",
+        )
+        .into_response();
+    }
 
-                // correct action path (bundle path)
-                let action_path = state
-                    .project_root
-                    .join("server")
-                    .join("actions")
-                    .join(format!("{}.jsbundle", action_name));
+    // correct action path
+    let action_path = state
+        .project_root
+        .join("server")
+        .join("actions")
+        .join(format!("{}.jsbundle", action_name));
 
-                if !action_path.exists() {
-                    return (
-                        StatusCode::NOT_FOUND,
-                        format!("Action bundle not found: {:?}", action_path),
-                    )
-                    .into_response();
-                }
+    if !action_path.exists() {
+        return (
+            StatusCode::NOT_FOUND,
+            format!("Action bundle not found: {:?}", action_path),
+        )
+        .into_response();
+    }
 
-                // read JS bundle
-                let js_code = match fs::read_to_string(action_path) {
-                    Ok(v) => v,
-                    Err(e) => {
-                        return (
-                            StatusCode::INTERNAL_SERVER_ERROR,
-                            format!("Failed reading action bundle: {}", e),
-                        ).into_response()
-                    }
-                };
+    // read JS bundle
+    let js_code = match fs::read_to_string(action_path) {
+        Ok(v) => v,
+        Err(e) => {
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("Failed reading action bundle: {}", e),
+            )
+            .into_response();
+        }
+    };
 
-                // inject request
-                let injected = format!(
-                    "const __titan_req = {};\n{};\n{}(__titan_req);",
-                    body_str,
-                    js_code,
-                    action_name
-                );                
+    // ---------------------------
+    // ENV injection (correct way)
+    // ---------------------------
+    let mut env_map = serde_json::Map::new();
+    for (k, v) in std::env::vars() {
+        env_map.insert(k, Value::String(v));
+    }
 
-                // exec in Boa
-                let mut ctx = Context::default();
-                let result = match ctx.eval(Source::from_bytes(&injected)) {
-                    Ok(v) => v,
-                    Err(e) => {
-                        return (
-                            StatusCode::INTERNAL_SERVER_ERROR,
-                            format!("JS execution error: {}", e.to_string()),
-                        )
-                            .into_response();
-                    }
-                };
+    let env_json = serde_json::Value::Object(env_map);
 
-                // convert JsValue -> JSON (Boa returns Option<Value>)
-                let result_json: Value = match result.to_json(&mut ctx) {
-                    Ok(Some(v)) => v,
-                    Ok(None) => serde_json::json!({ "error": "JS returned undefined" }),
-                    Err(e) => json_error(e.to_string()),
-                };
+    // Final JS code to execute in Boa
+    let injected = format!(
+        r#"
+        globalThis.process = {{
+            env: {}
+        }};
 
-                
+        const __titan_req = {};
+        {};
 
-                return Json(result_json).into_response();
-            }
+        {}(__titan_req);
+        "#,
+        env_json.to_string(),
+        body_str,
+        js_code,
+        action_name
+    );
+
+    // Execute JS safely
+    let mut ctx = Context::default();
+    let result = match ctx.eval(Source::from_bytes(&injected)) {
+        Ok(v) => v,
+        Err(e) => {
+            return Json(json_error(e.to_string())).into_response();
+        }
+    };
+
+    // Convert Boa -> JSON
+    let result_json: Value = match result.to_json(&mut ctx) {
+        Ok(Some(v)) => v,
+        Ok(None) => serde_json::json!({ "error": "JS returned undefined" }),
+        Err(e) => json_error(e.to_string()),
+    };
+
+    return Json(result_json).into_response();
+}
 
             // --------------------------
             // STATIC JSON
@@ -154,11 +177,15 @@ fn json_error(msg: String) -> Value {
     serde_json::json!({ "error": msg })
 }
 
+
+
 // ----------------------
 // MAIN
 // ----------------------
 #[tokio::main]
 async fn main() -> Result<()> {
+    dotenvy::dotenv().ok();
+
     let raw = fs::read_to_string("./routes.json").unwrap_or_else(|_| "{}".to_string());
     let json: Value = serde_json::from_str(&raw).unwrap_or_default();
 
@@ -190,20 +217,15 @@ async fn main() -> Result<()> {
     //
     // TITAN BANNER
     //
-    println!(
-        "\n\x1b[38;5;208m\
-████████╗██╗████████╗ █████╗ ███╗   ██╗\n\
-╚══██╔══╝██║╚══██╔══╝██╔══██╗████╗  ██║\n\
-   ██║   ██║   ██║   ███████║██╔██╗ ██║\n\
-   ██║   ██║   ██║   ██╔══██║██║╚██╗██║\n\
-   ██║   ██║   ██║   ██║  ██║██║ ╚████║\n\
-   ╚═╝   ╚═╝   ╚═╝   ╚═╝  ╚═╝╚═╝  ╚═══╝\x1b[0m\n"
-    );
+    println!("\n\x1b[38;5;208m████████╗██╗████████╗ █████╗ ███╗   ██╗");
+    println!("╚══██╔══╝██║╚══██╔══╝██╔══██╗████╗  ██║");
+    println!("   ██║   ██║   ██║   ███████║██╔██╗ ██║");
+    println!("   ██║   ██║   ██║   ██╔══██║██║╚██╗██║");
+    println!("   ██║   ██║   ██║   ██║  ██║██║ ╚████║");
+    println!("   ╚═╝   ╚═╝   ╚═╝   ╚═╝  ╚═╝╚═╝  ╚═══╝\x1b[0m\n");
 
-    println!(
-        "\x1b[38;5;39mTitan server running at:\x1b[0m \x1b[97mhttp://localhost:{}\x1b[0m\n",
-        port
-    );
+    println!("\x1b[38;5;39mTitan server running at:\x1b[0m http://localhost:{}", port);
+
     axum::serve(listener, app).await?;
     Ok(())
 }
