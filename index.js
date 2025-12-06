@@ -94,13 +94,13 @@ Next steps:
 // RUN BUNDLER
 // ------------------------------------------
 function runBundler() {
-    const bundler = path.join(process.cwd(), "titan", "bundler.js");
+    const bundler = path.join(process.cwd(), "titan", "bundle.js");
 
     if (fs.existsSync(bundler)) {
         console.log(cyan("Titan: bundling actions..."));
         execSync(`node ${bundler}`, { stdio: "inherit" });
     } else {
-        console.log(yellow("Warning: cli/bundle.js missing."));
+        console.log(yellow("Warning: titan/bundle.js missing."));
     }
 }
 
@@ -144,9 +144,7 @@ function buildProd() {
 function startProd() {
     const isWindows = process.platform === "win32";
 
-    const binaryName = isWindows
-        ? "titan-server.exe"
-        : "titan-server"; // Linux / macOS
+    const binaryName = isWindows ? "titan-server.exe" : "titan-server";    // Linux / macOS
 
     const exe = path.join(
         process.cwd(),
@@ -156,7 +154,7 @@ function startProd() {
         binaryName
     );
 
-    execSync(`"${exe}"`, { stdio: "inherit", shell: true });
+    execSync(`"${exe}"`, { stdio: "inherit" });
 }
 
 
