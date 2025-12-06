@@ -1,0 +1,14 @@
+# Node
+node_modules/
+
+# Rust build
+/server/target/
+
+# Titan build artifacts (ignore in repo,
+# but regenerate before deployment)
+server/actions/*.jsbundle
+server/titan/*.jsbundle
+server/routes.json
+server/action_map.json
+
+
