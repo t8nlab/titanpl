@@ -6,20 +6,29 @@ const root = process.cwd();
 const actionsDir = path.join(root, "app", "actions");
 const outDir = path.join(root, "server", "actions");
 
-fs.mkdirSync(outDir, { recursive: true });
+export async function bundle() {
+  console.log("[Titan] Bundling actions...");
 
-const files = fs.readdirSync(actionsDir).filter(f => f.endsWith(".js"));
+  fs.mkdirSync(outDir, { recursive: true });
 
-(async () => {
+  // Clean old bundles
+  for (const file of fs.readdirSync(outDir)) {
+    fs.unlinkSync(path.join(outDir, file));
+  }
+
+  const files = fs.readdirSync(actionsDir).filter(f => f.endsWith(".js"));
+
   for (const file of files) {
     const entry = path.join(actionsDir, file);
-    const outfile = path.join(outDir, file + "bundle");
 
-    console.log(`Bundling ${entry} → ${outfile}`);
+    // Rust runtime expects `.jsbundle` extension — consistent with previous design
+    const outfile = path.join(outDir, file.replace(".js", ".jsbundle"));
+
+    console.log(`[Titan] Bundling ${entry} → ${outfile}`);
 
     await esbuild.build({
       entryPoints: [entry],
-      bundle: false,
+      bundle: true,
       format: "cjs",
       platform: "neutral",
       outfile,
@@ -27,5 +36,5 @@ const files = fs.readdirSync(actionsDir).filter(f => f.endsWith(".js"));
     });
   }
 
-  console.log("Bundling complete.");
-})();
+  console.log("[Titan] Bundling finished.");
+}
