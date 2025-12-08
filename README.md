@@ -8,8 +8,8 @@
    ╚═╝   ╚═╝   ╚═╝   ╚═╝  ╚═╝╚═╝  ╚═══╝
 ```
 # Notice 
-## Production mode is under development 😞 
-## Enjoy development mode tit dev 💙
+**Production mode is under development 😞**
+ **Enjoy development mode tit dev 💙**
 
 # TITAN PLANET 🚀
 
