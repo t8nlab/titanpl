@@ -181,51 +181,57 @@ async function devServer() {
 }
 
 /* PRODUCTION BUILD */
+// BUILD RELEASE — PRODUCTION READY
 function buildProd() {
-    const root = process.cwd();
-    const appJs = path.join(root, "app", "app.js");
-
     console.log(cyan("Titan: Building production output..."));
 
+    const root = process.cwd();
+    const appJs = path.join(root, "app", "app.js");
+    const serverDir = path.join(root, "server");
+    const actionsOut = path.join(serverDir, "actions");
+
+    // BASIC CHECKS
     if (!fs.existsSync(appJs)) {
-        console.log(red("ERROR: app/app.js missing."));
+        console.log(red("ERROR: app/app.js not found."));
         process.exit(1);
     }
 
-    /* Generate routes */
-    execSync(`node "${appJs}"`, { stdio: "inherit" });
+    // ----------------------------------------------------
+    // 1) BUILD METADATA + BUNDLE ACTIONS (ONE TIME ONLY)
+    // ----------------------------------------------------
+    console.log(cyan("→ Building Titan metadata + bundling actions..."));
+    execSync("node app/app.js --build", { stdio: "inherit" });
 
-    /* Bundle actions */
-    runBundler(root);
+    // ensure actions directory exists
+    fs.mkdirSync(actionsOut, { recursive: true });
 
-    /* Copy bundles → server/actions */
-    const outDir = path.join(root, "server", "actions");
-    fs.mkdirSync(outDir, { recursive: true });
-
-    const builtActions = path.join(projectRoot, "server", "actions");
-
-    if (fs.existsSync(builtActions)) {
-        for (const file of fs.readdirSync(builtActions)) {
-            if (file.endsWith(".jsbundle")) {
-                fs.copyFileSync(
-                    path.join(builtActions, file),
-                    path.join(actionsOut, file)
-                );
-            }
-        }
+    // verify bundled actions exist
+    const bundles = fs.readdirSync(actionsOut).filter(f => f.endsWith(".jsbundle"));
+    if (bundles.length === 0) {
+        console.log(red("ERROR: No actions bundled."));
+        console.log(red("Make sure your DSL outputs to server/actions."));
+        process.exit(1);
     }
 
-
-    console.log(green("✔ Actions copied to server/actions"));
-
-    /* Rust release build */
-    execSync(`cargo build --release`, {
-        cwd: path.join(root, "server"),
-        stdio: "inherit",
+    bundles.forEach(file => {
+        console.log(cyan(`→ Found action bundle: ${file}`));
     });
 
-    console.log(green("✔ Rust binary built successfully."));
+    console.log(green("✔ Actions ready in server/actions"));
+
+    // ----------------------------------------------------
+    // 2) BUILD RUST BINARY
+    // ----------------------------------------------------
+    console.log(cyan("→ Building Rust release binary..."));
+    execSync("cargo build --release", {
+        cwd: serverDir,
+        stdio: "inherit"
+    });
+
+    console.log(green("✔ Titan production build complete!"));
 }
+
+
 
 /* START PRODUCTION BINARY */
 function startProd() {

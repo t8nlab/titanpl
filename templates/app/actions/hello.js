@@ -1,6 +1,5 @@
 function hello(req) {
-    const name = req.name;
-    return { name: name, msg: `Hello ${name}` }
+    return { "name": `${req.name || "user"}`, msg: `welcome to titan planet ${req.name || "user"}` }
 }
 
 globalThis.hello = hello;

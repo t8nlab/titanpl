@@ -172,7 +172,7 @@ Titan now includes a built-in server-side `fetch` bridge powered by Rust.
 Use it to call any external API:
 
 ```js
-export function hello(req) {
+function hello(req) {
     const body = JSON.stringify({
         model: "gpt-4.1-mini",
         messages: [{ role: "user", content: "hii" }]

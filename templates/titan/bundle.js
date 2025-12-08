@@ -28,12 +28,16 @@ export async function bundle() {
 
     await esbuild.build({
       entryPoints: [entry],
+      outfile: outfile,
       bundle: true,
-      format: "cjs",
+      format: "iife",  
       platform: "neutral",
-      outfile,
-      minify: false,
-    });
+      target: "es2020",
+      banner: {
+          js: ""  
+      }
+  });
+  
   }
 
   console.log("[Titan] Bundling finished.");

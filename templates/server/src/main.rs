@@ -1,5 +1,5 @@
 // server/src/main.rs
-use std::{collections::HashMap, fs, path::PathBuf, sync::Arc};
+use std::{collections::HashMap, env, fs, path::PathBuf, sync::Arc, path::Path};
 
 use anyhow::Result;
 use axum::{
@@ -33,6 +33,39 @@ struct RouteVal {
 struct AppState {
     routes: Arc<HashMap<String, RouteVal>>,
     project_root: PathBuf,
+}
+
+// -------------------------
+// ACTION DIRECTORY RESOLUTION
+// -------------------------
+
+fn resolve_actions_dir() -> PathBuf {
+    // Respect explicit override first
+    if let Ok(override_dir) = env::var("TITAN_ACTIONS_DIR") {
+        return PathBuf::from(override_dir);
+    }
+
+    // Production container layout
+    if Path::new("/app/actions").exists() {
+        return PathBuf::from("/app/actions");
+    }
+
+    // Try to walk up from the executing binary to discover `<...>/server/actions`
+    if let Ok(exe) = std::env::current_exe() {
+        if let Some(parent) = exe.parent() {
+            if let Some(target_dir) = parent.parent() {
+                if let Some(server_dir) = target_dir.parent() {
+                    let candidate = server_dir.join("actions");
+                    if candidate.exists() {
+                        return candidate;
+                    }
+                }
+            }
+        }
+    }
+
+    // Fall back to local ./actions
+    PathBuf::from("./actions")
 }
 
 /// Try to find the directory that contains compiled action bundles.
@@ -200,16 +233,20 @@ async fn dynamic_handler_inner(
                     return (StatusCode::INTERNAL_SERVER_ERROR, "Invalid action name").into_response();
                 }
 
-                // Resolve actions directory robustly
-                let actions_dir = find_actions_dir(&state.project_root);
-                let actions_dir = match actions_dir {
-                    Some(p) => p,
-                    None => {
-                        return (
-                            StatusCode::INTERNAL_SERVER_ERROR,
-                            format!("Actions directory not found (checked multiple locations)"),
-                        )
-                            .into_response();
+                // Resolve actions directory: prefer resolve_actions_dir(), fall back to heuristic find_actions_dir
+                let resolved = resolve_actions_dir();
+                let actions_dir = if resolved.exists() && resolved.is_dir() {
+                    resolved
+                } else {
+                    match find_actions_dir(&state.project_root) {
+                        Some(p) => p,
+                        None => {
+                            return (
+                                StatusCode::INTERNAL_SERVER_ERROR,
+                                format!("Actions directory not found (checked multiple locations)"),
+                            )
+                                .into_response();
+                        }
                     }
                 };
 
@@ -304,14 +341,6 @@ async fn main() -> Result<()> {
 
     // Project root — heuristics: try current_dir()
     let project_root = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
-
-    // Debug logging — show where we looked for actions
-    eprintln!("DEBUG runtime cwd: {:?}", std::env::current_dir());
-    eprintln!("DEBUG project_root: {:?}", project_root);
-    eprintln!(
-        "DEBUG found actions dir (if any): {:?}",
-        find_actions_dir(&project_root)
-    );
 
     let state = AppState {
         routes: Arc::new(map),
