@@ -1,21 +1,21 @@
 // server/src/main.rs
-use std::{collections::HashMap, env, fs, path::PathBuf, sync::Arc, path::Path};
+use std::{collections::HashMap, env, fs, path::Path, path::PathBuf, sync::Arc};
 
 use anyhow::Result;
 use axum::{
-    body::{to_bytes, Body},
+    Router,
+    body::{Body, to_bytes},
     extract::State,
     http::{Request, StatusCode},
     response::{IntoResponse, Json},
     routing::any,
-    Router,
 };
 
-use boa_engine::{object::ObjectInitializer, Context, JsValue, Source};
+use boa_engine::{Context, JsValue, Source, object::ObjectInitializer};
 use boa_engine::{js_string, native_function::NativeFunction, property::Attribute};
 
-use reqwest::header::{HeaderMap, HeaderName, HeaderValue};
 use reqwest::blocking::Client;
+use reqwest::header::{HeaderMap, HeaderName, HeaderValue};
 
 use serde::Deserialize;
 use serde_json::Value;
@@ -152,9 +152,10 @@ fn inject_t_fetch(ctx: &mut Context) {
             if !header_pairs.is_empty() {
                 let mut headers = HeaderMap::new();
                 for (k, v) in header_pairs.into_iter() {
-                    if let (Ok(name), Ok(val)) =
-                        (HeaderName::from_bytes(k.as_bytes()), HeaderValue::from_str(&v))
-                    {
+                    if let (Ok(name), Ok(val)) = (
+                        HeaderName::from_bytes(k.as_bytes()),
+                        HeaderValue::from_str(&v),
+                    ) {
                         headers.insert(name, val);
                     }
                 }
@@ -230,7 +231,8 @@ async fn dynamic_handler_inner(
             "action" => {
                 let action_name = route.value.as_str().unwrap_or("").trim();
                 if action_name.is_empty() {
-                    return (StatusCode::INTERNAL_SERVER_ERROR, "Invalid action name").into_response();
+                    return (StatusCode::INTERNAL_SERVER_ERROR, "Invalid action name")
+                        .into_response();
                 }
 
                 // Resolve actions directory: prefer resolve_actions_dir(), fall back to heuristic find_actions_dir
@@ -272,30 +274,56 @@ async fn dynamic_handler_inner(
                 };
 
                 // Build env object
-                let mut env_map = serde_json::Map::new();
+                let mut env_map: serde_json::Map<String, Value> = serde_json::Map::new();
                 for (k, v) in std::env::vars() {
                     env_map.insert(k, Value::String(v));
                 }
-                let env_json = Value::Object(env_map);
+                let env_json: Value = Value::Object(env_map);
 
-                // Injected script: sets process.env and __titan_req and invokes action function.
-                let injected = format!(
+                // Ensure body_str is valid JS: we will embed it as a JS expression.
+                // If body_str is a JSON object string, embedding it directly is fine.
+                // But to be safe, we create a quoted JS string and parse it in JS if necessary.
+                let safe_body_literal: String =
+                    serde_json::to_string(&body_str).unwrap_or_else(|_| "null".to_string());
+
+                // Injected script: sets process.env, __titan_env, __titan_req and invokes action function.
+                let injected: String = format!(
                     r#"
-                    globalThis.process = {{ env: {} }};
-                    const __titan_req = {};
-                    {};
-                    {}(__titan_req);
-                    "#,
-                    env_json.to_string(),
-                    body_str,
-                    js_code,
-                    action_name
+    // Runtime env injected by Titan
+    globalThis.process = {{ env: {} }};
+    globalThis.__titan_env = {};
+    // quick debug so prod logs show whether API key is present
+    try {{
+      console.log('TITAN: runtime API_KEY =', (process && process.env && process.env.API_KEY) || (typeof __titan_env !== 'undefined' && __titan_env.API_KEY) || null);
+    }} catch(e) {{ /* ignore */ }}
+
+    // Parse the incoming request body. If it's a JSON string we parse it into an object.
+    const __titan_req_body_literal = {};
+    let __titan_req;
+    try {{
+      // it's a quoted JSON string in Rust, so first unquote via JSON.parse
+      __titan_req = JSON.parse(__titan_req_body_literal);
+    }} catch (e) {{
+      // if parse fails, fall back to empty object
+      __titan_req = {{}};
+    }}
+
+    // Action code (bundled JS)
+    {};
+    // call exported action function
+    {}(__titan_req);
+    "#,
+                    env_json.to_string(), // inserted JSON object for process.env
+                    env_json.to_string(), // inserted also as __titan_env
+                    safe_body_literal,    // quoted JSON string literal of request body
+                    js_code,              // code from the .jsbundle
+                    action_name           // call function
                 );
 
-                let mut ctx = Context::default();
+                let mut ctx: Context = Context::default();
                 inject_t_fetch(&mut ctx);
 
-                let result = match ctx.eval(Source::from_bytes(&injected)) {
+                let result: JsValue = match ctx.eval(Source::from_bytes(&injected)) {
                     Ok(v) => v,
                     Err(e) => return Json(json_error(e.to_string())).into_response(),
                 };
@@ -361,7 +389,10 @@ async fn main() -> Result<()> {
     println!("   ██║   ██║   ██║   ██╔══██║██║╚██╗██║");
     println!("   ██║   ██║   ██║   ██║  ██║██║ ╚████║");
     println!("   ╚═╝   ╚═╝   ╚═╝   ╚═╝  ╚═╝╚═╝  ╚═══╝\x1b[0m\n");
-    println!("\x1b[38;5;39mTitan server running at:\x1b[0m http://localhost:{}", port);
+    println!(
+        "\x1b[38;5;39mTitan server running at:\x1b[0m http://localhost:{}",
+        port
+    );
 
     axum::serve(listener, app).await?;
     Ok(())

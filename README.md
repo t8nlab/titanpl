@@ -9,7 +9,7 @@
 ```
 # Notice 
 **Production mode is under development 😞**
- **Enjoy development mode tit dev 💙**
+ **Enjoy development mode `tit dev` 💙**
 
 # TITAN PLANET 🚀
 
@@ -176,6 +176,8 @@ Use it to call any external API:
 
 ```js
 function hello(req) {
+    const API_KEY = process.env.API_KEY || __titan_env.API_KEY;
+
     const body = JSON.stringify({
         model: "gpt-4.1-mini",
         messages: [{ role: "user", content: "hii" }]
@@ -185,7 +187,7 @@ function hello(req) {
         method: "POST",
         headers: {
             "Content-Type": "application/json",
-            "Authorization": `Bearer ${process.env.OPENAI_API_KEY}`
+            "Authorization": `Bearer ${API_KEY}`
         },
         body
     });
