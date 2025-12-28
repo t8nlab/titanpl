@@ -1,6 +1,6 @@
 {
   "name": "@ezetgalaxy/titan",
-  "version": "25.14.8",
+  "version": "25.15.0",
   "description": "JavaScript backend framework that compiles your JS into a Rust + Axum server.",
   "license": "ISC",
   "author": "ezetgalaxy",

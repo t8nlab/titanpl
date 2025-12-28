@@ -1,5 +1,5 @@
-function hello(req) {
-    return { "name": `${req.name || "user"}`, msg: `welcome to titan planet ${req.name || "user"}` }
+export function hello(req) {
+    return {
+        message: `Hello from Titan ${req.name}`,
+    };
 }
-
-globalThis.hello = hello;

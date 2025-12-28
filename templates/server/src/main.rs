@@ -21,6 +21,17 @@ use serde::Deserialize;
 use serde_json::Value;
 use tokio::net::TcpListener;
 use tokio::task;
+use std::time::Instant;
+
+
+
+
+
+
+
+
+
+
 
 /// Route configuration (loaded from routes.json)
 #[derive(Debug, Deserialize)]
@@ -32,8 +43,50 @@ struct RouteVal {
 #[derive(Clone)]
 struct AppState {
     routes: Arc<HashMap<String, RouteVal>>,
+    dynamic_routes: Arc<Vec<DynamicRoute>>,
     project_root: PathBuf,
 }
+
+
+#[derive(Debug, Deserialize)]
+struct DynamicRoute {
+    method: String,
+    pattern: String,
+    action: String,
+}
+
+
+fn blue(s: &str) -> String {
+    format!("\x1b[34m{}\x1b[0m", s)
+}
+fn white(s: &str) -> String {
+    format!("\x1b[39m{}\x1b[0m", s)
+}
+fn yellow(s: &str) -> String {
+    format!("\x1b[33m{}\x1b[0m", s)
+}
+fn green(s: &str) -> String {
+    format!("\x1b[32m{}\x1b[0m", s)
+}
+fn gray(s: &str) -> String {
+    format!("\x1b[90m{}\x1b[0m", s)
+}
+fn red(s: &str) -> String {
+    format!("\x1b[31m{}\x1b[0m", s)
+}
+
+// A helper to Format Boa Errors
+fn format_js_error(err: boa_engine::JsError, action: &str) -> String {
+    format!(
+        "Action: {}\n{}",
+        action,
+        err.to_string()
+    )
+}
+
+
+
+
 
 // -------------------------
 // ACTION DIRECTORY RESOLUTION
@@ -94,64 +147,78 @@ fn find_actions_dir(project_root: &PathBuf) -> Option<PathBuf> {
     None
 }
 
+/// Here add all the runtime t base things
 /// Injects a synchronous `t.fetch(url, opts?)` function into the Boa `Context`.
 ///
 /// Implementation details:
 ///  - Converts JS opts → `serde_json::Value` (owned) using `to_json`.
 ///  - Executes reqwest blocking client inside `tokio::task::block_in_place` to avoid blocking async runtime.
 ///  - Returns `{ ok: bool, status?: number, body?: string, error?: string }`.
-fn inject_t_fetch(ctx: &mut Context) {
-    // Native function (Boa 0.20) using from_fn_ptr
+fn inject_t_runtime(ctx: &mut Context, action_name: &str) {
+
+    // =========================================================
+    // t.log(...)  — unsafe by design (Boa requirement)
+    // =========================================================
+    let action = action_name.to_string();
+
+    let t_log_native = unsafe {
+        NativeFunction::from_closure(move |_this, args, _ctx| {
+            let mut parts = Vec::new();
+
+            for arg in args {
+                parts.push(arg.display().to_string());
+            }
+
+            println!(
+                "{} {}",
+                blue("[Titan]"),
+                white(&format!("log({}): {}", action, parts.join(" ")))
+            );
+
+            Ok(JsValue::undefined())
+        })
+    };
+
+    // =========================================================
+    // t.fetch(...) — no capture, safe fn pointer
+    // =========================================================
     let t_fetch_native = NativeFunction::from_fn_ptr(|_this, args, ctx| {
-        // Extract URL (owned string)
         let url = args
             .get(0)
             .and_then(|v| v.to_string(ctx).ok())
             .map(|s| s.to_std_string_escaped())
             .unwrap_or_default();
 
-        // Extract opts -> convert to serde_json::Value (owned)
         let opts_js = args.get(1).cloned().unwrap_or(JsValue::undefined());
-        let opts_json: Value = match opts_js.to_json(ctx) {
-            Ok(v) => v,
-            Err(_) => Value::Object(serde_json::Map::new()),
-        };
+        let opts_json: Value = opts_js
+            .to_json(ctx)
+            .unwrap_or(Value::Object(serde_json::Map::new()));
 
-        // Pull method, body, headers into owned Rust values
         let method = opts_json
             .get("method")
             .and_then(|m| m.as_str())
-            .map(|s| s.to_string())
-            .unwrap_or_else(|| "GET".to_string());
+            .unwrap_or("GET")
+            .to_string();
 
-        let body_opt = match opts_json.get("body") {
-            Some(Value::String(s)) => Some(s.clone()),
-            Some(other) => Some(other.to_string()),
-            None => None,
-        };
+        let body_opt = opts_json.get("body").map(|v| v.to_string());
 
-        // headers as Vec<(String,String)>
-        let mut header_pairs: Vec<(String, String)> = Vec::new();
+        let mut header_pairs = Vec::new();
         if let Some(Value::Object(map)) = opts_json.get("headers") {
-            for (k, v) in map.iter() {
-                let v_str = match v {
-                    Value::String(s) => s.clone(),
-                    other => other.to_string(),
-                };
-                header_pairs.push((k.clone(), v_str));
+            for (k, v) in map {
+                header_pairs.push((k.clone(), v.to_string()));
             }
         }
 
-        // Perform the blocking HTTP request inside block_in_place to avoid runtime panic
         let out_json = task::block_in_place(move || {
             let client = Client::new();
-
-            let method_parsed = method.parse().unwrap_or(reqwest::Method::GET);
-            let mut req = client.request(method_parsed, &url);
+            let mut req = client.request(
+                method.parse().unwrap_or(reqwest::Method::GET),
+                &url,
+            );
 
             if !header_pairs.is_empty() {
                 let mut headers = HeaderMap::new();
-                for (k, v) in header_pairs.into_iter() {
+                for (k, v) in header_pairs {
                     if let (Ok(name), Ok(val)) =
                         (HeaderName::from_bytes(k.as_bytes()), HeaderValue::from_str(&v))
                     {
@@ -166,15 +233,11 @@ fn inject_t_fetch(ctx: &mut Context) {
             }
 
             match req.send() {
-                Ok(resp) => {
-                    let status = resp.status().as_u16();
-                    let text = resp.text().unwrap_or_default();
-                    serde_json::json!({
-                        "ok": true,
-                        "status": status,
-                        "body": text
-                    })
-                }
+                Ok(resp) => serde_json::json!({
+                    "ok": true,
+                    "status": resp.status().as_u16(),
+                    "body": resp.text().unwrap_or_default()
+                }),
                 Err(e) => serde_json::json!({
                     "ok": false,
                     "error": e.to_string()
@@ -182,22 +245,91 @@ fn inject_t_fetch(ctx: &mut Context) {
             }
         });
 
-        // Convert serde_json::Value -> JsValue
         Ok(JsValue::from_json(&out_json, ctx).unwrap_or(JsValue::undefined()))
     });
 
-    // Convert native function to JS function object (requires Realm)
-    let realm = ctx.realm();
-    let t_fetch_js_fn = t_fetch_native.to_js_function(realm);
+    // =========================================================
+    // Build global `t`
+    // =========================================================
+    let realm = ctx.realm().clone();
 
-    // Build `t` object with `.fetch`
     let t_obj = ObjectInitializer::new(ctx)
-        .property(js_string!("fetch"), t_fetch_js_fn, Attribute::all())
+        .property(
+            js_string!("log"),
+            t_log_native.to_js_function(&realm),
+            Attribute::all(),
+        )
+        .property(
+            js_string!("fetch"),
+            t_fetch_native.to_js_function(&realm),
+            Attribute::all(),
+        )    
         .build();
 
     ctx.global_object()
         .set(js_string!("t"), JsValue::from(t_obj), false, ctx)
         .expect("set global t");
+}
+
+
+// Dynamic Matcher (Core Logic)
+
+fn match_dynamic_route(
+    method: &str,
+    path: &str,
+    routes: &[DynamicRoute],
+) -> Option<(String, HashMap<String, String>)> {
+    let path_segments: Vec<&str> =
+        path.trim_matches('/').split('/').collect();
+
+    for route in routes {
+        if route.method != method {
+            continue;
+        }
+
+        let pattern_segments: Vec<&str> =
+            route.pattern.trim_matches('/').split('/').collect();
+
+        if pattern_segments.len() != path_segments.len() {
+            continue;
+        }
+
+        let mut params = HashMap::new();
+        let mut matched = true;
+
+        for (pat, val) in pattern_segments.iter().zip(path_segments.iter()) {
+            if pat.starts_with(':') {
+                let inner = &pat[1..];
+
+                let (name, ty) = inner
+                    .split_once('<')
+                    .map(|(n, t)| (n, t.trim_end_matches('>')))
+                    .unwrap_or((inner, "string"));
+
+                let valid = match ty {
+                    "number" => val.parse::<i64>().is_ok(),
+                    "string" => true,
+                    _ => false,
+                };
+
+                if !valid {
+                    matched = false;
+                    break;
+                }
+
+                params.insert(name.to_string(), (*val).to_string());
+            } else if pat != val {
+                matched = false;
+                break;
+            }
+        }
+
+        if matched {
+            return Some((route.action.clone(), params));
+        }
+    }
+
+    None
 }
 
 // Root/dynamic handlers -----------------------------------------------------
@@ -215,115 +347,259 @@ async fn dynamic_handler_inner(
     State(state): State<AppState>,
     req: Request<Body>,
 ) -> impl IntoResponse {
+
+    // ---------------------------
+    // BASIC REQUEST INFO
+    // ---------------------------
     let method = req.method().as_str().to_uppercase();
-    let path = req.uri().path();
+    let path = req.uri().path().to_string();
     let key = format!("{}:{}", method, path);
 
+    // ---------------------------
+    // TIMER + LOG META
+    // ---------------------------
+    let start = Instant::now();
+    let mut route_label = String::from("not_found");
+    let mut route_kind = "none"; // exact | dynamic | reply
+
+    // ---------------------------
+    // QUERY PARSING
+    // ---------------------------
+    let query: HashMap<String, String> = req
+        .uri()
+        .query()
+        .map(|q| {
+            q.split('&')
+                .filter_map(|pair| {
+                    let mut it = pair.splitn(2, '=');
+                    Some((
+                        it.next()?.to_string(),
+                        it.next().unwrap_or("").to_string(),
+                    ))
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+
+    // ---------------------------
+    // BODY
+    // ---------------------------
     let body_bytes = match to_bytes(req.into_body(), usize::MAX).await {
         Ok(b) => b,
-        Err(_) => return (StatusCode::BAD_REQUEST, "Failed to read body").into_response(),
+        Err(_) => {
+            return (
+                StatusCode::BAD_REQUEST,
+                "Failed to read request body",
+            )
+                .into_response()
+        }
     };
+
     let body_str = String::from_utf8_lossy(&body_bytes).to_string();
+    let body_json: Value = if body_str.is_empty() {
+        Value::Null
+    } else {
+        serde_json::from_str(&body_str).unwrap_or(Value::String(body_str))
+    };
 
+    // ---------------------------
+    // ROUTE RESOLUTION
+    // ---------------------------
+    let mut params: HashMap<String, String> = HashMap::new();
+    let mut action_name: Option<String> = None;
+
+    // Exact route
     if let Some(route) = state.routes.get(&key) {
-        match route.r#type.as_str() {
-            "action" => {
-                let action_name = route.value.as_str().unwrap_or("").trim();
-                if action_name.is_empty() {
-                    return (StatusCode::INTERNAL_SERVER_ERROR, "Invalid action name").into_response();
-                }
+        route_kind = "exact";
 
-                // Resolve actions directory: prefer resolve_actions_dir(), fall back to heuristic find_actions_dir
-                let resolved = resolve_actions_dir();
-                let actions_dir = if resolved.exists() && resolved.is_dir() {
-                    resolved
-                } else {
-                    match find_actions_dir(&state.project_root) {
-                        Some(p) => p,
-                        None => {
-                            return (
-                                StatusCode::INTERNAL_SERVER_ERROR,
-                                format!("Actions directory not found (checked multiple locations)"),
-                            )
-                                .into_response();
-                        }
-                    }
-                };
-
-                let action_path = actions_dir.join(format!("{}.jsbundle", action_name));
-
-                if !action_path.exists() {
-                    return (
-                        StatusCode::NOT_FOUND,
-                        format!("Action bundle not found: {:?}", action_path),
-                    )
-                        .into_response();
-                }
-
-                let js_code = match fs::read_to_string(&action_path) {
-                    Ok(v) => v,
-                    Err(e) => {
-                        return (
-                            StatusCode::INTERNAL_SERVER_ERROR,
-                            format!("Failed reading action bundle: {}", e),
-                        )
-                            .into_response();
-                    }
-                };
-
-                // Build env object
-                let mut env_map = serde_json::Map::new();
-                for (k, v) in std::env::vars() {
-                    env_map.insert(k, Value::String(v));
-                }
-                let env_json = Value::Object(env_map);
-
-                // Injected script: sets process.env and __titan_req and invokes action function.
-                let injected = format!(
-                    r#"
-                    globalThis.process = {{ env: {} }};
-                    const __titan_req = {};
-                    {};
-                    {}(__titan_req);
-                    "#,
-                    env_json.to_string(),
-                    body_str,
-                    js_code,
-                    action_name
-                );
-
-                let mut ctx = Context::default();
-                inject_t_fetch(&mut ctx);
-
-                let result = match ctx.eval(Source::from_bytes(&injected)) {
-                    Ok(v) => v,
-                    Err(e) => return Json(json_error(e.to_string())).into_response(),
-                };
-
-                let result_json: Value = match result.to_json(&mut ctx) {
-                    Ok(v) => v,
-                    Err(e) => json_error(e.to_string()),
-                };
-
-                return Json(result_json).into_response();
-            }
-
-            "json" => return Json(route.value.clone()).into_response(),
-            _ => {
-                if let Some(s) = route.value.as_str() {
-                    return s.to_string().into_response();
-                }
-                return route.value.to_string().into_response();
-            }
+        if route.r#type == "action" {
+            let name = route.value.as_str().unwrap_or("unknown").to_string();
+            route_label = name.clone();
+            action_name = Some(name);
+        } else if route.r#type == "json" {
+            let elapsed = start.elapsed();
+            println!(
+                "{} {} {} {}",
+                blue("[Titan]"),
+                white(&format!("{} {}", method, path)),
+                white("→ json"),
+                gray(&format!("in {:.2?}", elapsed))
+            );
+            return Json(route.value.clone()).into_response();
+        } else if let Some(s) = route.value.as_str() {
+            let elapsed = start.elapsed();
+            println!(
+                "{} {} {} {}",
+                blue("[Titan]"),
+                white(&format!("{} {}", method, path)),
+                white("→ reply"),
+                gray(&format!("in {:.2?}", elapsed))
+            );
+            return s.to_string().into_response();
         }
     }
 
-    (StatusCode::NOT_FOUND, "Not Found").into_response()
+    // Dynamic route
+    if action_name.is_none() {
+        if let Some((action, p)) =
+            match_dynamic_route(&method, &path, state.dynamic_routes.as_slice())
+        {
+            route_kind = "dynamic";
+            route_label = action.clone();
+            action_name = Some(action);
+            params = p;
+        }
+    }
+
+    let action_name = match action_name {
+        Some(a) => a,
+        None => {
+            let elapsed = start.elapsed();
+            println!(
+                "{} {} {} {}",
+                blue("[Titan]"),
+                white(&format!("{} {}", method, path)),
+                white("→ 404"),
+                gray(&format!("in {:.2?}", elapsed))
+            );
+            return (StatusCode::NOT_FOUND, "Not Found").into_response();
+        }
+    };
+
+    // ---------------------------
+    // LOAD ACTION
+    // ---------------------------
+    let resolved = resolve_actions_dir();
+    let actions_dir = resolved
+        .exists()
+        .then(|| resolved)
+        .or_else(|| find_actions_dir(&state.project_root))
+        .unwrap();
+
+    let action_path = actions_dir.join(format!("{}.jsbundle", action_name));
+    let js_code = fs::read_to_string(&action_path).unwrap();
+
+    // ---------------------------
+    // ENV
+    // ---------------------------
+    let env_json = std::env::vars()
+        .map(|(k, v)| (k, Value::String(v)))
+        .collect::<serde_json::Map<_, _>>();
+
+    // ---------------------------
+    // JS EXECUTION
+    // ---------------------------
+    let injected = format!(
+        r#"
+        globalThis.process = {{ env: {} }};
+        const __titan_req = {{
+            body: {},
+            method: "{}",
+            path: "{}",
+            params: {},
+            query: {}
+        }};
+        {};
+        globalThis["{}"](__titan_req);
+        "#,
+        Value::Object(env_json).to_string(),
+        body_json.to_string(),
+        method,
+        path,
+        serde_json::to_string(&params).unwrap(),
+        serde_json::to_string(&query).unwrap(),
+        js_code,
+        action_name
+    );
+
+    let mut ctx = Context::default();
+    inject_t_runtime(&mut ctx, &action_name);
+    let result = match ctx.eval(Source::from_bytes(&injected)) {
+        Ok(v) => v,
+        Err(err) => {
+            let elapsed = start.elapsed();
+    
+            let details = format_js_error(err, &route_label);
+    
+            println!(
+                "{} {} {} {}",
+                blue("[Titan]"),
+                red(&format!("{} {}", method, path)),
+                red("→ error"),
+                gray(&format!("in {:.2?}", elapsed))
+            );
+    
+            println!("{}", red(&details));
+    
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({
+                    "error": "Action execution failed",
+                    "action": route_label,
+                    "details": details
+                })),
+            )
+                .into_response();
+        }
+    };
+    
+    let result_json: Value = if result.is_undefined() {
+        Value::Null
+    } else {
+        match result.to_json(&mut ctx) {
+            Ok(v) => v,
+            Err(err) => {
+                let elapsed = start.elapsed();
+                println!(
+                    "{} {} {} {}",
+                    blue("[Titan]"),
+                    red(&format!("{} {}", method, path)),
+                    red("→ serialization error"),
+                    gray(&format!("in {:.2?}", elapsed))
+                );
+    
+                return (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(serde_json::json!({
+                        "error": "Failed to serialize action result",
+                        "details": err.to_string()
+                    })),
+                )
+                    .into_response();
+            }
+        }
+    };
+    
+    
+
+    // ---------------------------
+    // FINAL LOG
+    // ---------------------------
+    let elapsed = start.elapsed();
+    match route_kind {
+        "dynamic" => println!(
+            "{} {} {} {} {} {}",
+            blue("[Titan]"),
+            green(&format!("{} {}", method, path)),
+            white("→"),
+            green(&route_label),
+            white("(dynamic)"),
+            gray(&format!("in {:.2?}", elapsed))
+        ),
+        "exact" => println!(
+            "{} {} {} {} {}",
+            blue("[Titan]"),
+            white(&format!("{} {}", method, path)),
+            white("→"),
+            yellow(&route_label),
+            gray(&format!("in {:.2?}", elapsed))
+        ),
+        _ => {}
+    }
+
+    Json(result_json).into_response()
 }
 
-fn json_error(msg: String) -> Value {
-    serde_json::json!({ "error": msg })
-}
 
 // Entrypoint ---------------------------------------------------------------
 
@@ -337,15 +613,22 @@ async fn main() -> Result<()> {
 
     let port = json["__config"]["port"].as_u64().unwrap_or(3000);
     let routes_json = json["routes"].clone();
-    let map: HashMap<String, RouteVal> = serde_json::from_value(routes_json).unwrap_or_default();
+    let map: HashMap<String, RouteVal> =
+    serde_json::from_value(routes_json).unwrap_or_default();
+
+    let dynamic_routes: Vec<DynamicRoute> =
+    serde_json::from_value(json["__dynamic_routes"].clone())
+        .unwrap_or_default();
 
     // Project root — heuristics: try current_dir()
     let project_root = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
 
     let state = AppState {
         routes: Arc::new(map),
+        dynamic_routes: Arc::new(dynamic_routes),
         project_root,
     };
+    
 
     let app = Router::new()
         .route("/", any(root_route))

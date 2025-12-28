@@ -19,6 +19,8 @@ export async function bundle() {
   const files = fs.readdirSync(actionsDir).filter(f => f.endsWith(".js"));
 
   for (const file of files) {
+    const actionName = path.basename(file, ".js");
+
     const entry = path.join(actionsDir, file);
 
     // Rust runtime expects `.jsbundle` extension — consistent with previous design
@@ -28,16 +30,32 @@ export async function bundle() {
 
     await esbuild.build({
       entryPoints: [entry],
-      outfile: outfile,
+      outfile,
       bundle: true,
-      format: "iife",  
+      format: "iife",
+      globalName: "__titan_exports",
       platform: "neutral",
       target: "es2020",
-      banner: {
-          js: ""  
+
+      footer: {
+        js: `
+    (function () {
+      const fn =
+        __titan_exports["${actionName}"] ||
+        __titan_exports.default;
+    
+      if (typeof fn !== "function") {
+        throw new Error("[Titan] Action '${actionName}' not found or not a function");
       }
-  });
-  
+    
+      globalThis["${actionName}"] = fn;
+    })();
+    `
+      }
+    });
+
+
+
   }
 
   console.log("[Titan] Bundling finished.");
