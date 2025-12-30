@@ -8,23 +8,73 @@ import { fileURLToPath } from "url";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-/* Colors */
+/* -------------------------------------------------------
+ * Colors (MUST be defined before usage)
+ * ----------------------------------------------------- */
 const cyan = (t) => `\x1b[36m${t}\x1b[0m`;
 const green = (t) => `\x1b[32m${t}\x1b[0m`;
 const yellow = (t) => `\x1b[33m${t}\x1b[0m`;
 const red = (t) => `\x1b[31m${t}\x1b[0m`;
 const bold = (t) => `\x1b[1m${t}\x1b[0m`;
 
+/* -------------------------------------------------------
+ * Invocation detection (tit vs titan)
+ * ----------------------------------------------------- */
+function wasInvokedAsTit() {
+    // Case 1: direct binary (global / local)
+    const argv = process.argv.map(a => a.toLowerCase());
+    const direct =
+        argv[1]?.endsWith("tit") ||
+        argv[1]?.endsWith("tit.cmd") ||
+        argv[1]?.endsWith("tit.ps1");
+
+    if (direct) return true;
+
+    // Case 2: npx / npm exec
+    const npmArgvRaw = process.env.npm_config_argv;
+    if (!npmArgvRaw) return false;
+
+    try {
+        const npmArgv = JSON.parse(npmArgvRaw);
+
+        // npm stores original command here
+        return npmArgv.original?.includes("tit");
+    } catch {
+        return false;
+    }
+}
+
+const isTitAlias = wasInvokedAsTit();
+
+if (isTitAlias) {
+    console.log(
+        yellow(
+            "[Notice] `tit` is deprecated. Please use `titan` instead.\n" +
+            "        `tit` will continue to work for now."
+        )
+    );
+}
+
+
+
+
+/* -------------------------------------------------------
+ * Args
+ * ----------------------------------------------------- */
 const args = process.argv.slice(2);
 const cmd = args[0];
 
-/* Titan version (read from package.json) */
+/* -------------------------------------------------------
+ * Titan version
+ * ----------------------------------------------------- */
 const pkg = JSON.parse(
     fs.readFileSync(path.join(__dirname, "package.json"), "utf8")
 );
 const TITAN_VERSION = pkg.version;
 
-/* Safe copy directory */
+/* -------------------------------------------------------
+ * Utils
+ * ----------------------------------------------------- */
 function copyDir(src, dest) {
     fs.mkdirSync(dest, { recursive: true });
 
@@ -40,21 +90,27 @@ function copyDir(src, dest) {
     }
 }
 
-/* HELP */
+/* -------------------------------------------------------
+ * HELP
+ * ----------------------------------------------------- */
 function help() {
     console.log(`
 ${bold(cyan("Titan Planet"))}  v${TITAN_VERSION}
 
-${green("tit init <project>")}   Create new Titan project
-${green("tit dev")}              Dev mode (hot reload)
-${green("tit build")}            Build production Rust server
-${green("tit start")}            Start production binary
-${green("tit update")}           Update Titan engine
-${green("tit --version")}        Show Titan CLI version
+${green("titan init <project>")}   Create new Titan project
+${green("titan dev")}              Dev mode (hot reload)
+${green("titan build")}            Build production Rust server
+${green("titan start")}            Start production binary
+${green("titan update")}           Update Titan engine
+${green("titan --version")}        Show Titan CLI version
+
+${yellow("Note: `tit` is supported as a legacy alias.")}
 `);
 }
 
-/* INIT PROJECT */
+/* -------------------------------------------------------
+ * INIT
+ * ----------------------------------------------------- */
 function initProject(name) {
     if (!name) return console.log(red("Usage: tit init <project>"));
 
@@ -92,7 +148,9 @@ Next steps:
 `);
 }
 
-/* BUNDLER (absolute path, Railway-safe) */
+/* -------------------------------------------------------
+ * BUNDLER
+ * ----------------------------------------------------- */
 function runBundler(root) {
     const bundler = path.join(root, "titan", "bundle.js");
 
@@ -104,7 +162,9 @@ function runBundler(root) {
     execSync(`node "${bundler}"`, { stdio: "inherit" });
 }
 
-/* DEV SERVER — HOT RELOAD */
+/* -------------------------------------------------------
+ * DEV SERVER
+ * ----------------------------------------------------- */
 async function devServer() {
     const root = process.cwd();
     console.log(cyan("Titan Dev Mode — Hot Reload Enabled"));
@@ -180,8 +240,9 @@ async function devServer() {
     });
 }
 
-/* PRODUCTION BUILD */
-// BUILD RELEASE — PRODUCTION READY
+/* -------------------------------------------------------
+ * BUILD
+ * ----------------------------------------------------- */
 function buildProd() {
     console.log(cyan("Titan: Building production output..."));
 
@@ -231,9 +292,9 @@ function buildProd() {
     console.log(green("✔ Titan production build complete!"));
 }
 
-
-
-/* START PRODUCTION BINARY */
+/* -------------------------------------------------------
+ * START
+ * ----------------------------------------------------- */
 function startProd() {
     const isWin = process.platform === "win32";
     const bin = isWin ? "titan-server.exe" : "titan-server";
@@ -242,7 +303,9 @@ function startProd() {
     execSync(`"${exe}"`, { stdio: "inherit" });
 }
 
-/* UPDATE TITAN */
+/* -------------------------------------------------------
+ * UPDATE
+ * ----------------------------------------------------- */
 function updateTitan() {
     const root = process.cwd();
     const projectTitan = path.join(root, "titan");
@@ -305,36 +368,20 @@ function updateTitan() {
 
     console.log(bold(green("✔ Titan update complete")));
 }
-
-
-/* ROUTER */
+/* -------------------------------------------------------
+ * ROUTER
+ * ----------------------------------------------------- */
 switch (cmd) {
-    case "init":
-        initProject(args[1]);
-        break;
-
-    case "dev":
-        devServer();
-        break;
-
-    case "build":
-        buildProd();
-        break;
-
-    case "start":
-        startProd();
-        break;
-
-    case "update":
-        updateTitan();
-        break;
-
+    case "init": initProject(args[1]); break;
+    case "dev": devServer(); break;
+    case "build": buildProd(); break;
+    case "start": startProd(); break;
+    case "update": updateTitan(); break;
     case "--version":
     case "-v":
     case "version":
-        console.log(green(`Titan v${TITAN_VERSION}`));
+        console.log(cyan(`Titan v${TITAN_VERSION}`));
         break;
-
     default:
         help();
 }

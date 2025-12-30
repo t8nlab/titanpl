@@ -1,13 +1,14 @@
 {
   "name": "@ezetgalaxy/titan",
-  "version": "25.15.3",
+  "version": "25.15.5",
   "description": "JavaScript backend framework that compiles your JS into a Rust + Axum server.",
   "license": "ISC",
   "author": "ezetgalaxy",
   "type": "module",
   "main": "index.js",
   "bin": {
-    "tit": "./index.js"
+    "tit": "./index.js",
+    "titan": "./index.js"
   },
   "files": [
     "index.js",

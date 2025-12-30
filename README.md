@@ -11,10 +11,10 @@
 # Notice
 
 ✅ **Production mode is ready**
-💙 **Enjoy development mode `tit dev`**
+💙 **Enjoy development mode `titan dev`**
 ✅ **No more `globalThis` required**
 💟 **Website for titan docs: https://titan-docs-ez.vercel.app/docs**
-
+🚀 **CLI: `titan` is now the canonical command. `tit` remains supported as an alias.**
 
 ---
 
@@ -94,9 +94,9 @@ npm install -g @ezetgalaxy/titan
 ### Create a new project
 
 ```bash
-tit init my-app
+titan init my-app
 cd my-app
-tit dev
+titan dev
 ```
 
 Titan will:
@@ -119,7 +119,7 @@ npm install -g @ezetgalaxy/titan@latest
 * Then 
 
 ```bash
-tit update
+titan update
 ```
 * ``tit update`` will update and add new features in your Titan project
 
@@ -179,7 +179,7 @@ This object is:
 
 ### 🔥 Developer Experience
 
-* Hot reload dev server (`tit dev`)
+* Hot reload dev server (`titan dev`)
 * Automatic rebundling of actions
 * Automatic Rust server restart
 * Colored request logs
