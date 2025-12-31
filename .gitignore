@@ -11,5 +11,5 @@ server/titan/*.jsbundle
 server/routes.json
 server/action_map.json
 
-
+.env
 .vscode
