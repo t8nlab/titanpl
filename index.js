@@ -368,23 +368,52 @@ function updateTitan() {
     console.log(cyan("Updating Titan runtime and server..."));
 
     // ----------------------------------------------------------
-    // 1. Update titan/ runtime folder
+    // 1. Update titan/ runtime (authoritative, safe to replace)
     // ----------------------------------------------------------
-    fs.rmSync(projectTitan, { recursive: true, force: true, maxRetries: 10, retryDelay: 500 });
+    fs.rmSync(projectTitan, {
+        recursive: true,
+        force: true,
+        maxRetries: 10,
+        retryDelay: 500,
+    });
+
     copyDir(templateTitan, projectTitan);
     console.log(green("✔ Updated titan/ runtime"));
 
     // ----------------------------------------------------------
-    // 2. Update entire server/ folder (authoritative overwrite)
+    // 2. Update server/ WITHOUT deleting the folder
     // ----------------------------------------------------------
-    fs.rmSync(projectServer, { recursive: true, force: true, maxRetries: 10, retryDelay: 500 });
-    copyDir(templateServer, projectServer);
-    console.log(green("✔ Updated server/ (Cargo.toml + src/)"));
+    if (!fs.existsSync(projectServer)) {
+        fs.mkdirSync(projectServer);
+    }
 
-    // ----------------------------------------------------------
-    // 3. Update project-level config files
-    // ----------------------------------------------------------
-    [".gitignore", ".dockerignore", "Dockerfile", "titan.d.ts"].forEach((file) => {
+    // 2a. Overwrite Cargo.toml
+    const srcCargo = path.join(templateServer, "Cargo.toml");
+    const destCargo = path.join(projectServer, "Cargo.toml");
+
+    if (fs.existsSync(srcCargo)) {
+        fs.copyFileSync(srcCargo, destCargo);
+        console.log(green("✔ Updated server/Cargo.toml"));
+    }
+
+    // 2b. Replace server/src only
+    const projectSrc = path.join(projectServer, "src");
+    const templateSrc = path.join(templateServer, "src");
+
+    if (fs.existsSync(projectSrc)) {
+        fs.rmSync(projectSrc, {
+            recursive: true,
+            force: true,
+            maxRetries: 10,
+            retryDelay: 500,
+        });
+    }
+
+    copyDir(templateSrc, projectSrc);
+    console.log(green("✔ Updated server/src/"));
+
+    // Root-level config files
+    [".gitignore", ".dockerignore", "Dockerfile"].forEach((file) => {
         const src = path.join(templatesRoot, file);
         const dest = path.join(root, file);
 
@@ -394,8 +423,24 @@ function updateTitan() {
         }
     });
 
+    // app/titan.d.ts (JS typing contract)
+    const appDir = path.join(root, "app");
+    const srcDts = path.join(templatesRoot, "titan.d.ts");
+    const destDts = path.join(appDir, "titan.d.ts");
+
+    if (fs.existsSync(srcDts)) {
+        if (!fs.existsSync(appDir)) {
+            fs.mkdirSync(appDir);
+        }
+
+        fs.copyFileSync(srcDts, destDts);
+        console.log(green("✔ Updated app/titan.d.ts"));
+    }
+
+
     console.log(bold(green("✔ Titan update complete")));
 }
+
 
 
 /* -------------------------------------------------------
