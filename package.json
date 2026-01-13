@@ -12,7 +12,6 @@
   },
   "files": [
     "index.js",
-    "scripts/",
     "templates/",
     "titan",
     "titanpl-sdk",
