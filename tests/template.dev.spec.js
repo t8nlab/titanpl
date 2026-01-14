@@ -295,23 +295,36 @@ describe("compileAndRunAppEntry() - JavaScript", () => {
         cleanupTempProject(tempDir);
     });
 
-    it("should handle JavaScript project without compilation", async () => {
+    it("should bundle JavaScript project with esbuild", async () => {
         tempDir = createTempProject({ useTypeScript: false });
 
         const result = await compileAndRunAppEntry(tempDir, { skipExec: true });
 
-        // For JS, it should return the original path, not a compiled one
-        expect(result.outFile).toContain("app.js");
-        expect(result.compiled).toBeNull();
+        // JS is now also bundled through esbuild to .titan/app.compiled.mjs
+        expect(result.outFile).toContain("app.compiled.mjs");
+        expect(result.compiled).not.toBeNull();
+        expect(fs.existsSync(result.outFile)).toBe(true);
     });
 
-    it("should not create .titan directory for JavaScript projects", async () => {
+    it("should create .titan directory for JavaScript projects", async () => {
         tempDir = createTempProject({ useTypeScript: false });
 
         await compileAndRunAppEntry(tempDir, { skipExec: true });
 
         const titanDir = path.join(tempDir, ".titan");
-        expect(fs.existsSync(titanDir)).toBe(false);
+        expect(fs.existsSync(titanDir)).toBe(true);
+        expect(fs.existsSync(path.join(titanDir, "app.compiled.mjs"))).toBe(true);
+    });
+
+    it("should fix titan import path in JavaScript output", async () => {
+        tempDir = createTempProject({ useTypeScript: false });
+
+        const result = await compileAndRunAppEntry(tempDir, { skipExec: true });
+
+        // Should NOT contain relative import
+        expect(result.compiled).not.toContain('from "../titan/titan.js"');
+        // Should contain absolute path
+        expect(result.compiled).toContain(path.join(tempDir, "titan", "titan.js").replace(/\\/g, "/"));
     });
 });
 
@@ -726,7 +739,7 @@ describe("compileAndRunAppEntry() - uncovered branches", () => {
         cleanupTempProject(tempDir);
     });
 
-    it("should warn when JS file has no titan.js import", async () => {
+    it("should auto-inject import when JS file has no titan.js import", async () => {
         tempDir = createTempProject({ useTypeScript: false });
 
         // Crear app.js SIN import de titan.js
@@ -741,34 +754,37 @@ console.log("No titan import here");
 
         const result = await compileAndRunAppEntry(tempDir, { skipExec: true });
 
-        // Debería mostrar el warning
+        // Should auto-inject the import
         expect(consoleSpy).toHaveBeenCalledWith(
-            expect.stringContaining("Consider adding")
+            expect.stringContaining("Auto-injecting titan.js import")
         );
+
+        // Result should contain titan.js
+        expect(result.compiled).toContain("titan.js");
 
         consoleSpy.mockRestore();
     });
 
-    it("should not warn when JS file has titan.js import", async () => {
+    it("should not auto-inject when JS file has titan.js import", async () => {
         tempDir = createTempProject({ useTypeScript: false });
 
-        // El proyecto ya tiene import, verificamos que NO muestra warning
+        // El proyecto ya tiene import, verificamos que NO muestra warning de inyección
         const consoleSpy = vi.spyOn(console, "log");
 
         await compileAndRunAppEntry(tempDir, { skipExec: true });
 
-        const warningCalls = consoleSpy.mock.calls.filter(
-            call => call[0]?.includes?.("Consider adding")
+        const injectionCalls = consoleSpy.mock.calls.filter(
+            call => call[0]?.includes?.("Auto-injecting titan.js import")
         );
-        expect(warningCalls.length).toBe(0);
+        expect(injectionCalls.length).toBe(0);
 
         consoleSpy.mockRestore();
     });
 
-    it("should not warn when JS file has titan/titan.js in path", async () => {
+    it("should not auto-inject when JS file has titan/titan.js in path", async () => {
         tempDir = createTempProject({ useTypeScript: false });
 
-        // Verificar que el import con path completo no genera warning
+        // Verificar que el import con path completo no genera inyección
         const appJs = `import t from "../titan/titan.js";
 t.get("/").reply("test");
 `;
@@ -778,10 +794,10 @@ t.get("/").reply("test");
 
         await compileAndRunAppEntry(tempDir, { skipExec: true });
 
-        const warningCalls = consoleSpy.mock.calls.filter(
-            call => call[0]?.includes?.("Consider adding")
+        const injectionCalls = consoleSpy.mock.calls.filter(
+            call => call[0]?.includes?.("Auto-injecting titan.js import")
         );
-        expect(warningCalls.length).toBe(0);
+        expect(injectionCalls.length).toBe(0);
 
         consoleSpy.mockRestore();
     });
@@ -875,7 +891,7 @@ console.log("TS executed successfully");
         expect(result.outFile).toContain("app.compiled.mjs");
     });
 
-    it("should execute JavaScript directly when skipExec=false", async () => {
+    it("should execute bundled JavaScript when skipExec=false", async () => {
         tempDir = createTempProject({ useTypeScript: false });
 
         // Sobrescribir titan.js con versión mock
@@ -899,8 +915,9 @@ console.log("JS executed successfully");
 
         const result = await compileAndRunAppEntry(tempDir, { skipExec: false });
 
-        expect(result.outFile).toContain("app.js");
-        expect(result.compiled).toBeNull();
+        // JS is now also bundled
+        expect(result.outFile).toContain("app.compiled.mjs");
+        expect(result.compiled).not.toBeNull();
     });
 
     it("should throw when executed code fails", async () => {
@@ -951,34 +968,5 @@ describe("compileAndRunAppEntry() - import verification warning", () => {
         expect(warningCalls.length).toBe(0);
 
         consoleSpy.mockRestore();
-    });
-
-    // ============================================================
-    // TESTS: Import verification warning
-    // ============================================================
-    describe("compileAndRunAppEntry() - import verification warning", () => {
-        let tempDir;
-
-        afterEach(() => {
-            cleanupTempProject(tempDir);
-        });
-
-        it("should not trigger warning when compiled output has import", async () => {
-            tempDir = createTempProject({ useTypeScript: true });
-
-            const consoleSpy = vi.spyOn(console, "error");
-
-            // Compilar normalmente - no debería mostrar warning
-            await compileAndRunAppEntry(tempDir, { skipExec: true });
-
-            const warningCalls = consoleSpy.mock.calls.filter(
-                call => call[0]?.includes?.("WARNING: Import statement may be missing")
-            );
-
-            // No debería haber warnings en compilación normal
-            expect(warningCalls.length).toBe(0);
-
-            consoleSpy.mockRestore();
-        });
     });
 });

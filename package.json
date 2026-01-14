@@ -46,7 +46,9 @@
   "scripts": {
     "init": "rm -rf build && node index.js init build",
     "init:ts": "rm -rf build && node index.js init build --ts",
-    "build": "echo \"No build step\"",
+    "build": "cd build && node ../index.js build",
+    "dev": "cd build && node ../index.js dev",
+    "start": "cd build && node ../index.js start",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",

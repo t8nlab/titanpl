@@ -243,6 +243,206 @@ async function devServer() {
 }
 
 /* -------------------------------------------------------
+ * BUILD - Helper Functions
+ * ----------------------------------------------------- */
+
+/**
+ * Detects whether the project uses TypeScript or JavaScript as its entry point.
+ * @param {string} root - Project root directory
+ * @returns {{path: string, isTS: boolean} | null}
+ */
+function getAppEntry(root) {
+    const tsEntry = path.join(root, "app", "app.ts");
+    const jsEntry = path.join(root, "app", "app.js");
+
+    if (fs.existsSync(tsEntry)) {
+        return { path: tsEntry, isTS: true };
+    }
+
+    if (fs.existsSync(jsEntry)) {
+        return { path: jsEntry, isTS: false };
+    }
+
+    return null;
+}
+
+/**
+ * Finds the index of the first non-comment, non-empty line in the code.
+ * @param {string[]} lines - Array of code lines
+ * @returns {number}
+ */
+function findFirstCodeLineIndex(lines) {
+    for (let i = 0; i < lines.length; i++) {
+        const line = lines[i].trim();
+        if (line && !line.startsWith("//")) {
+            return i;
+        }
+    }
+    return 0;
+}
+
+/**
+ * Injects the titan.js import statement into compiled code if missing.
+ * @param {string} compiled - Compiled JavaScript code
+ * @param {string} titanJsAbsolutePath - Absolute path to titan.js
+ * @param {string} outFile - Output file path
+ * @returns {string}
+ */
+function injectTitanImportIfMissing(compiled, titanJsAbsolutePath, outFile) {
+    if (compiled.includes("titan.js")) {
+        return compiled;
+    }
+
+    console.log(cyan("[Titan] Auto-injecting titan.js import (global t usage detected)..."));
+
+    const lines = compiled.split("\n");
+    const insertIndex = findFirstCodeLineIndex(lines);
+    const importStatement = `import t from "${titanJsAbsolutePath}";`;
+
+    lines.splice(insertIndex, 0, importStatement);
+    const modifiedCode = lines.join("\n");
+
+    fs.writeFileSync(outFile, modifiedCode);
+
+    return modifiedCode;
+}
+
+/**
+ * Compiles TypeScript entry file using esbuild.
+ * @param {string} root - Project root directory
+ * @param {string} entryPath - Path to the TypeScript entry file
+ * @returns {Promise<{outFile: string, compiled: string}>}
+ */
+async function compileTypeScript(root, entryPath) {
+    console.log(cyan("[Titan] Compiling app.ts with esbuild..."));
+
+    const esbuild = await import("esbuild");
+    const titanDir = path.join(root, ".titan");
+    const outFile = path.join(titanDir, "app.compiled.mjs");
+
+    // Clean and recreate .titan directory
+    if (fs.existsSync(titanDir)) {
+        fs.rmSync(titanDir, { recursive: true, force: true });
+    }
+    fs.mkdirSync(titanDir, { recursive: true });
+
+    // Calculate the absolute path to titan.js
+    const titanJsAbsolutePath = path.join(root, "titan", "titan.js").replace(/\\/g, "/");
+
+    // Create plugin to mark titan.js as external
+    const titanPlugin = {
+        name: "titan-external",
+        setup(build) {
+            build.onResolve({ filter: /titan\/titan\.js$/ }, () => ({
+                path: titanJsAbsolutePath,
+                external: true,
+            }));
+        },
+    };
+
+    // Compile TS to JS
+    await esbuild.build({
+        entryPoints: [entryPath],
+        outfile: outFile,
+        format: "esm",
+        platform: "node",
+        target: "node18",
+        bundle: true,
+        plugins: [titanPlugin],
+        loader: { ".ts": "ts" },
+        tsconfigRaw: {
+            compilerOptions: {
+                experimentalDecorators: true,
+                useDefineForClassFields: true,
+            },
+        },
+    });
+
+    // Read and process compiled output
+    let compiled = fs.readFileSync(outFile, "utf8");
+    compiled = injectTitanImportIfMissing(compiled, titanJsAbsolutePath, outFile);
+
+    return { outFile, compiled };
+}
+
+/**
+ * Bundles JavaScript entry file using esbuild.
+ * @param {string} root - Project root directory
+ * @param {string} entryPath - Path to the JavaScript entry file
+ * @returns {Promise<{outFile: string, compiled: string}>}
+ */
+async function compileJavaScript(root, entryPath) {
+    console.log(cyan("[Titan] Bundling app.js with esbuild..."));
+
+    const esbuild = await import("esbuild");
+    const titanDir = path.join(root, ".titan");
+    const outFile = path.join(titanDir, "app.compiled.mjs");
+
+    // Clean and recreate .titan directory
+    if (fs.existsSync(titanDir)) {
+        fs.rmSync(titanDir, { recursive: true, force: true });
+    }
+    fs.mkdirSync(titanDir, { recursive: true });
+
+    // Calculate the absolute path to titan.js
+    const titanJsAbsolutePath = path.join(root, "titan", "titan.js").replace(/\\/g, "/");
+
+    // Create plugin to mark titan.js as external
+    const titanPlugin = {
+        name: "titan-external",
+        setup(build) {
+            build.onResolve({ filter: /titan\/titan\.js$/ }, () => ({
+                path: titanJsAbsolutePath,
+                external: true,
+            }));
+        },
+    };
+
+    // Bundle JS with esbuild
+    await esbuild.build({
+        entryPoints: [entryPath],
+        outfile: outFile,
+        format: "esm",
+        platform: "node",
+        target: "node18",
+        bundle: true,
+        plugins: [titanPlugin],
+    });
+
+    // Read and process compiled output
+    let compiled = fs.readFileSync(outFile, "utf8");
+    compiled = injectTitanImportIfMissing(compiled, titanJsAbsolutePath, outFile);
+
+    return { outFile, compiled };
+}
+
+/**
+ * Compiles and executes the application entry point.
+ * @param {string} root - Project root directory
+ * @returns {Promise<{outFile: string, compiled: string}>}
+ */
+async function compileAndRunAppEntry(root) {
+    const entry = getAppEntry(root);
+
+    if (!entry) {
+        throw new Error("[Titan] No app.ts or app.js found in app/");
+    }
+
+    let result;
+
+    if (entry.isTS) {
+        result = await compileTypeScript(root, entry.path);
+    } else {
+        result = await compileJavaScript(root, entry.path);
+    }
+
+    // Execute the compiled file
+    execSync(`node "${result.outFile}"`, { stdio: "inherit", cwd: root });
+
+    return result;
+}
+
+/* -------------------------------------------------------
  * BUILD
  * ----------------------------------------------------- */
 async function buildProd() {
@@ -252,63 +452,26 @@ async function buildProd() {
     const serverDir = path.join(root, "server");
     const actionsOut = path.join(serverDir, "actions");
 
-    // Detect entry file (TS or JS)
-    const appTs = path.join(root, "app", "app.ts");
-    const appJs = path.join(root, "app", "app.js");
+    // 1) Detect entry file and compile/bundle
+    const entry = getAppEntry(root);
 
-    let entryFile = null;
-    let isTypeScript = false;
-
-    if (fs.existsSync(appTs)) {
-        entryFile = appTs;
-        isTypeScript = true;
-    } else if (fs.existsSync(appJs)) {
-        entryFile = appJs;
-    }
-
-    if (!entryFile) {
+    if (!entry) {
         console.log(red("ERROR: app/app.ts or app/app.js not found."));
         process.exit(1);
     }
 
-    // 1) BUILD METADATA + BUNDLE ACTIONS
-    console.log(cyan(`→ Building Titan metadata from ${isTypeScript ? "TypeScript" : "JavaScript"}...`));
+    const entryType = entry.isTS ? "TypeScript" : "JavaScript";
+    console.log(cyan(`→ Detected ${entryType} project`));
 
-    if (isTypeScript) {
-        const esbuild = await import("esbuild");
-        const outFile = path.join(root, ".titan", "app.compiled.mjs");
+    // 2) BUILD METADATA + BUNDLE ACTIONS
+    console.log(cyan(`→ Building Titan metadata from ${entryType}...`));
 
-        fs.mkdirSync(path.dirname(outFile), { recursive: true });
-
-        // Compile TS to JS WITHOUT bundling - just transform TypeScript
-        await esbuild.build({
-            entryPoints: [entryFile],
-            outfile: outFile,
-            format: "esm",
-            platform: "node",
-            target: "node18",
-            bundle: false, // Don't bundle, just transform TS -> JS
-            loader: { ".ts": "ts" },
-            tsconfigRaw: {
-                compilerOptions: {
-                    experimentalDecorators: true,
-                    useDefineForClassFields: true,
-                },
-            },
-        });
-
-        // Fix the import path in compiled file
-        let compiled = fs.readFileSync(outFile, "utf8");
-        const titanPath = path.join(root, "titan", "titan.js");
-        compiled = compiled.replace(
-            /from\s+["']\.\.\/titan\/titan\.js["']/g,
-            `from "${titanPath.replace(/\\/g, "/")}"`
-        );
-        fs.writeFileSync(outFile, compiled);
-
-        execSync(`node "${outFile}" --build`, { stdio: "inherit", cwd: root });
-    } else {
-        execSync("node app/app.js --build", { stdio: "inherit", cwd: root });
+    try {
+        await compileAndRunAppEntry(root);
+    } catch (e) {
+        console.log(red(`ERROR: Failed to compile ${entryType} entry point.`));
+        console.log(red(e.message));
+        process.exit(1);
     }
 
     // Ensure actions directory exists
@@ -328,7 +491,7 @@ async function buildProd() {
 
     console.log(green("✔ Actions ready in server/actions"));
 
-    // 2) BUILD RUST BINARY
+    // 3) BUILD RUST BINARY
     console.log(cyan("→ Building Rust release binary..."));
     execSync("cargo build --release", {
         cwd: serverDir,
@@ -550,23 +713,52 @@ function runExtension() {
 /* -------------------------------------------------------
  * ROUTER
  * ----------------------------------------------------- */
-if (cmd === "create" && args[1] === "ext") {
-    createExtension(args[2]);
-} else if (cmd === "run" && args[1] === "ext") {
-    runExtension();
-} else {
-    switch (cmd) {
-        case "init": initProject(args[1]); break;
-        case "dev": devServer(); break;
-        case "build": buildProd(); break;
-        case "start": startProd(); break;
-        case "update": updateTitan(); break;
-        case "--version":
-        case "-v":
-        case "version":
-            console.log(cyan(`Titan v${TITAN_VERSION}`));
-            break;
-        default:
-            help();
+const isMainModule = process.argv[1]?.endsWith('index.js') ||
+    process.argv[1]?.includes('titan') ||
+    process.argv[1]?.includes('tit');
+
+if (isMainModule && !process.env.VITEST) {
+    if (cmd === "create" && args[1] === "ext") {
+        createExtension(args[2]);
+    } else if (cmd === "run" && args[1] === "ext") {
+        runExtension();
+    } else {
+        switch (cmd) {
+            case "init": initProject(args[1]); break;
+            case "dev": devServer(); break;
+            case "build": buildProd(); break;
+            case "start": startProd(); break;
+            case "update": updateTitan(); break;
+            case "--version":
+            case "-v":
+            case "version":
+                console.log(cyan(`Titan v${TITAN_VERSION}`));
+                break;
+            default:
+                help();
+        }
     }
 }
+
+export {
+    cyan,
+    green,
+    yellow,
+    red,
+    bold,
+    wasInvokedAsTit,
+    copyDir,
+    getAppEntry,
+    findFirstCodeLineIndex,
+    injectTitanImportIfMissing,
+    compileTypeScript,
+    compileJavaScript,
+    compileAndRunAppEntry,
+    initProject,
+    devServer,
+    buildProd,
+    startProd,
+    updateTitan,
+    createExtension,
+    help
+};
