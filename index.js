@@ -293,22 +293,22 @@ function removeAlternateLanguageFiles(appDir, useTypeScript) {
 
 /**
  * Sets up TypeScript or JavaScript configuration files.
+ * Now copies both tsconfig and jsconfig regardless of project type.
  * @param {string} target - Target project directory.
  * @param {string} templateDir - Template directory path.
- * @param {boolean} useTypeScript - Whether TypeScript is being used.
  */
-function setupLanguageConfig(target, templateDir, useTypeScript) {
+function setupLanguageConfig(target, templateDir) {
     const tsconfigSrc = path.join(templateDir, "tsconfig.json");
     const tsconfigDest = path.join(target, "tsconfig.json");
+    const jsconfigSrc = path.join(templateDir, "jsconfig.json");
     const jsconfigDest = path.join(target, "jsconfig.json");
 
-    if (useTypeScript) {
-        if (copyFileIfExists(tsconfigSrc, tsconfigDest)) {
-            console.log(green("✔ Added tsconfig.json"));
-        }
-        removeFileIfExists(jsconfigDest);
-    } else {
-        removeFileIfExists(tsconfigDest);
+    if (copyFileIfExists(tsconfigSrc, tsconfigDest)) {
+        console.log(green("✔ Added tsconfig.json"));
+    }
+
+    if (copyFileIfExists(jsconfigSrc, jsconfigDest)) {
+        console.log(green("✔ Added jsconfig.json"));
     }
 }
 
@@ -391,7 +391,7 @@ function initProject(name) {
 
     const appDir = path.join(target, "app");
     removeAlternateLanguageFiles(appDir, useTypeScript);
-    setupLanguageConfig(target, templateDir, useTypeScript);
+    setupLanguageConfig(target, templateDir);
     copyDotfiles(templateDir, target);
 
     console.log(green("✔ Titan project created!"));
@@ -743,8 +743,8 @@ function startProd() {
     const bin = isWin ? "titan-server.exe" : "titan-server";
     const releaseDir = path.join(process.cwd(), "server", "target", "release");
     const exe = path.join(releaseDir, bin);
-    
-    execSync(`"${exe}"`, { 
+
+    execSync(`"${exe}"`, {
         stdio: "inherit",
         cwd: releaseDir
     });
@@ -836,24 +836,23 @@ function updateRootConfigFiles(templatesRoot, root) {
 
 /**
  * Updates language-specific configuration based on project type.
+ * Now updates both tsconfig and jsconfig.
  * @param {string} templatesRoot - Templates root directory.
  * @param {string} root - Project root directory.
  */
 function updateLanguageConfig(templatesRoot, root) {
-    if (isTypeScriptProject(root)) {
-        const tsconfigSrc = path.join(templatesRoot, "tsconfig.json");
-        const tsconfigDest = path.join(root, "tsconfig.json");
+    const tsconfigSrc = path.join(templatesRoot, "tsconfig.json");
+    const tsconfigDest = path.join(root, "tsconfig.json");
 
-        if (copyFileIfExists(tsconfigSrc, tsconfigDest)) {
-            console.log(green("✔ Updated tsconfig.json"));
-        }
-    } else {
-        const jsconfigSrc = path.join(templatesRoot, "jsconfig.json");
-        const jsconfigDest = path.join(root, "jsconfig.json");
+    if (copyFileIfExists(tsconfigSrc, tsconfigDest)) {
+        console.log(green("✔ Updated tsconfig.json"));
+    }
 
-        if (copyFileIfExists(jsconfigSrc, jsconfigDest)) {
-            console.log(green("✔ Updated jsconfig.json"));
-        }
+    const jsconfigSrc = path.join(templatesRoot, "jsconfig.json");
+    const jsconfigDest = path.join(root, "jsconfig.json");
+
+    if (copyFileIfExists(jsconfigSrc, jsconfigDest)) {
+        console.log(green("✔ Updated jsconfig.json"));
     }
 }
 
@@ -874,6 +873,27 @@ function updateTypeDeclarations(templatesRoot, appDir) {
 
     fs.copyFileSync(srcDts, destDts);
     console.log(green("✔ Updated app/titan.d.ts"));
+}
+
+/**
+ * Updates the global types file (types/titan.d.ts).
+ * @param {string} templatesRoot - Templates root directory.
+ * @param {string} root - Project root directory.
+ */
+function updateGlobalTypes(templatesRoot, root) {
+    const srcDts = path.join(templatesRoot, "types", "titan.d.ts");
+    const destDir = path.join(root, "types");
+    const destDts = path.join(destDir, "titan.d.ts");
+
+    if (!fs.existsSync(srcDts)) return;
+
+    if (!fs.existsSync(destDir)) {
+        fs.mkdirSync(destDir);
+    }
+
+    if (copyFileIfExists(srcDts, destDts)) {
+        console.log(green("✔ Updated types/titan.d.ts"));
+    }
 }
 
 /* -------------------------------------------------------
@@ -902,6 +922,7 @@ function updateTitan() {
     updateRootConfigFiles(templatesRoot, root);
     updateLanguageConfig(templatesRoot, root);
     updateTypeDeclarations(templatesRoot, path.join(root, "app"));
+    updateGlobalTypes(templatesRoot, root);
 
     console.log(bold(green("✔ Titan update complete")));
 }

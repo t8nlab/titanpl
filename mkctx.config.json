@@ -1,0 +1,8 @@
+{
+  "src": ".",
+  "ignore": "**/.titan/, mkctx/, node_modules/, .git/, dist/, build/, target/, .next/, out/, .cache, package-lock.json, README.md, *.log, temp/, tmp/, coverage/, .nyc_output, .env, .env.local, .env.development.local, .env.test.local, .env.production.local, npm-debug.log*, yarn-debug.log*, yarn-error.log*, .npm, .yarn-integrity, .parcel-cache, .vuepress/dist, .svelte-kit, **/*.rs.bk, .idea/, .vscode/, .DS_Store, Thumbs.db, *.swp, *.swo, .~lock.*, Cargo.lock, .cargo/registry/, .cargo/git/, .rustup/, *.pdb, *.dSYM/, *.so, *.dll, *.dylib, *.exe, *.lib, *.a, *.o, *.rlib, *.d, *.tmp, *.bak, *.orig, *.rej, *.pyc, *.pyo, *.class, *.jar, *.war, *.ear, *.zip, *.tar.gz, *.rar, *.7z, *.iso, *.img, *.dmg, *.pdf, *.doc, *.docx, *.xls, *.xlsx, *.ppt, *.pptx",
+  "output": "./mkctx",
+  "first_comment": "/* Project Context */",
+  "last_comment": "/* End of Context */",
+  "dynamic": false
+}
