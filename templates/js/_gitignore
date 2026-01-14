@@ -1,0 +1,37 @@
+# Node & Packages
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+package-lock.json
+yarn.lock
+
+# Titan Runtime (Auto-generated - DO NOT COMMIT)
+titan/server-bin*
+.ext/
+server/routes.json
+server/action_map.json
+server/actions/
+server/titan/
+server/src/actions_rust/
+
+# Rust Build Artifacts
+server/target/
+Cargo.lock
+
+# OS Files
+.DS_Store
+Thumbs.db
+*.tmp
+*.bak
+
+# Environment & Secrets
+.env
+.env.local
+.env.*.local
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo

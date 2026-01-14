@@ -40,11 +40,30 @@ function addRoute(method, route) {
   };
 }
 
+/**
+ * @typedef {Object} RouteHandler
+ * @property {(value: any) => void} reply - Send a direct response
+ * @property {(name: string) => void} action - Bind to a server-side action
+ */
+
+/**
+ * Titan App Builder
+ */
 const t = {
+  /**
+   * Define a GET route
+   * @param {string} route 
+   * @returns {RouteHandler}
+   */
   get(route) {
     return addRoute("GET", route);
   },
 
+  /**
+   * Define a POST route
+   * @param {string} route 
+   * @returns {RouteHandler}
+   */
   post(route) {
     return addRoute("POST", route);
   },
@@ -53,6 +72,11 @@ const t = {
     console.log(`[\x1b[35m${module}\x1b[0m] ${msg}`);
   },
 
+  /**
+   * Start the Titan Server
+   * @param {number} [port=3000] 
+   * @param {string} [msg=""] 
+   */
   async start(port = 3000, msg = "") {
     try {
       console.log(cyan("[Titan] Preparing runtime..."));
@@ -94,5 +118,5 @@ const t = {
   }
 };
 
-globalThis.t = t;
+
 export default t;

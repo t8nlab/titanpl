@@ -16,17 +16,18 @@
 
 ---
 
-# TITAN PLANET 🚀 
+# TITAN PLANET 🚀
 
 [![npm version](https://img.shields.io/npm/v/@ezetgalaxy/titan.svg?style=flat-square)](https://www.npmjs.com/package/@ezetgalaxy/titan)
 
 
-**JavaScript Simplicity. Rust Power. Zero Configuration.**
+**JavaScript Simplicity. Native Rust Power. Zero Configuration.**
 
-Titan Planet is a JavaScript-first backend framework that embeds JS actions into a Rust + Axum server and ships as a single native binary. Routes are compiled to static metadata; only actions run in the embedded JS runtime. No Node.js. No event loop in production.
+Titan Planet is a **JavaScript-first Backend Framework** that compiles your application into a single, high-performance native binary. It embeds a V8 JavaScript runtime directly into a specialized Rust + Axum server.
 
-You write **zero Rust**.
-Titan ships a full backend engine, dev server, bundler, router, action runtime, and Docker deploy pipeline — all powered by Rust under the hood.
+**Start with pure JavaScript.**
+**Need raw power? Add Rust actions seamlessly.**
+Titan handles the compilation, bundling, and routing automatically for both.
 
 Titan = **JavaScript productivity × Rust performance × Zero DevOps**
 
@@ -37,253 +38,138 @@ Titan = **JavaScript productivity × Rust performance × Zero DevOps**
 | Feature                              | Titan | Express/Nest | FastAPI | Bun       |
 | ------------------------------------ | ----- | ------------ | ------- | --------- |
 | Native binary output                 | ✅ Yes | ❌ No         | ❌ No    | ❌ No      |
-| Rust-level performance               | ✅ Yes | ❌ No         | ❌ No    | ❌ No      |
+| Hybrid Rust + JS Actions             | ✅ Yes | ❌ No         | ❌ No    | ❌ No      |
 | Pure JavaScript developer experience | ✅ Yes | ✅ Yes        | ❌ No    | ❌ Partial |
 | Zero-config Docker deploy            | ✅ Yes | ❌ No         | ❌ No    | ❌ No      |
 | Action-based architecture            | ✅ Yes | ❌ No         | ❌ No    | ❌ No      |
 | Hot reload dev server                | ✅ Yes | ❌ No         | ❌ No    | ❌ No      |
 
-Titan gives you:
-
-* Native speed
-* JS comfort
-* Cloud-first deployment
-* Full environment variable support
-* Built-in HTTP client (`t.fetch`)
-* Lightweight serverless-like actions
-* Instant hot reload
-* Zero configuration
-* Single deployable binary
-
 ---
 
 # 🚀 Quick Start
 
+### 1. Prerequisites
+* **Rust** (latest stable): [Install Rust](https://rust-lang.org/tools/install/)
+* **Node.js** (v18+): Required for CLI and JS tooling.
 
-# ⚙ Requirements
-
-Install before using Titan:
-
-### 1. Rust (latest stable)
-
-[https://rust-lang.org/tools/install/](https://rust-lang.org/tools/install/)
-
-### 2. Node.js (v18+)
-
-Required for:
-
-* Titan CLI
-* esbuild
-* JS → Rust compilation pipeline
-
-Verify:
-
-```bash
-node -v
-npm -v
-rustc -V
-```
-
----
-
-### Install Titan CLI
-
+### 2. Install CLI
 ```bash
 npm install -g @ezetgalaxy/titan
 ```
 
-### Create a new project
-
+### 3. Initialize & Run
 ```bash
 titan init my-app
+# Follow the interactive prompt to choose:
+# - JavaScript (Standard)
+# - Rust + JavaScript (Beta)
+```
+
+Inside your project:
+```bash
 cd my-app
 titan dev
 ```
 
-Titan will:
+You'll see the Titan Dev Server spin up:
+```
+  Titan Planet   v26.8.0   [ Dev Mode ]
 
-* Build routes
-* Bundle actions
-* Start Rust dev server
-* Watch file changes
-* Trigger instant reload
+  Type:        Rust + JS Actions
+  Hot Reload:  Enabled
+
+  • Preparing runtime... Done
+  • A new orbit is ready for your app in 0.9s
+  • Your app is now orbiting Titan Planet
+```
 
 ---
 
-# Update to new version
+# ⚡ Hybrid Action System
 
-* At first update the cli 
+Titan is unique because it allows you to write endpoints in **both** JavaScript and Rust within the same project.
 
-```bash
-npm install -g @ezetgalaxy/titan@latest
+### 🟡 JavaScript Actions (`app/actions/hello.js`)
+Perfect for business logic, rapid prototyping, and IO-bound tasks.
+```javascript
+export function run(req) {
+    t.log("Handling user request...");
+    return { 
+        message: "Hello from JavaScript!",
+        user_id: req.params.id 
+    };
+}
 ```
-* Then 
 
-```bash
-titan update
+### 🔴 Rust Actions (Beta)
+Perfect for heavy computation, encryption, image processing, or low-level system access.
+> **Note:** The Native Rust Action API is currently in **Beta**.
+```rust
+use axum::{response::{IntoResponse, Json}, http::Request, body::Body};
+use serde_json::json;
+
+pub async fn run(req: Request<Body>) -> impl IntoResponse {
+    let result = heavy_computation();
+    t.log("Processed 1M records in Rust");
+    Json(json!({ "result": result }))
+}
 ```
-* ``tit update`` will update and add new features in your Titan project
 
+**Titan automatically detects, compiles, and routes both types.**
+* `.js` files are bundled with esbuild.
+* `.rs` files are compiled into the native binary.
+* Both share the same `routes.json` configuration.
 
-# ✨ What Titan Can Do (New & Core Features)
+---
 
-Titan now includes a **complete runtime engine** with the following built-in capabilities:
+# ✨ Core Capabilities
 
-### 🛣 Routing & HTTP
+### 🔌 Unified Runtime API (`t`)
+Both JS and Rust actions have access to the powerful `t` namespace:
 
-* Static routes (`/`, `/health`)
-* Dynamic routes (`/user/:id<number>`)
-* Typed route parameters
-* Automatic method matching (GET / POST)
-* Query parsing (`req.query`)
-* Body parsing (`req.body`)
-* Zero-config routing metadata generation
+* `t.fetch(url, options)` — High-performance HTTP client
+* `t.log(msg)` — Sandboxed, structured logging
+* `t.jwt.sign / verify` — Fast JWT operations
+* `t.password.hash / verify` — Secure password handling
+* `t.db` — Database access (coming soon)
 
-### 🧠 Action Runtime
-
-* JavaScript actions executed inside a Rust runtime (v8)
-* Automatic action discovery and execution
-* No `globalThis` required anymore
-* Safe handling of `undefined` returns
-* JSON serialization guardrails
-* Action-scoped execution context
-
-### 🔌 Runtime APIs (`t`)
-
-* `t.fetch(...)` — built-in Rust-powered HTTP client
-* `t.log(...)` — sandboxed, action-scoped logging
-* Environment variable access (`process.env`)
-* No access to raw Node.js APIs (safe by default)
-
-### 🧾 Request Object (`req`)
-
-Each action receives a normalized request object:
+### 🛣 Intelligent Routing
+Define your routes in `routes.json`. Titan maps them to the correct action, regardless of language.
 
 ```json
 {
-  "method": "GET",
-  "path": "/user/90",
-  "params": { "id": "90" },
-  "query": {},
-  "body": null,
-
-  "headers": {
-    "accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",
-    "accept-encoding": "gzip, deflate, br, zstd",
-    "accept-language": "en-US,en;q=0.9",
-    "cache-control": "max-age=0",
-    "connection": "keep-alive",
-    "cookie": "",
-    "host": "localhost:3000",
-    "sec-ch-ua": "\"Google Chrome\";v=\"143\", \"Chromium\";v=\"143\", \"Not A(Brand\";v=\"24\"",
-    "sec-ch-ua-mobile": "?0",
-    "sec-ch-ua-platform": "\"Windows\"",
-    "sec-fetch-dest": "document",
-    "sec-fetch-mode": "navigate",
-    "sec-fetch-site": "none",
-    "sec-fetch-user": "?1",
-    "upgrade-insecure-requests": "1",
-    "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36"
-  },
+  "/hello": "hello",         // variable name matches filename (hello.js)
+  "/compute": "compute"      // variable name matches filename (compute.rs)
 }
 ```
 
-This object is:
-
-* Stable
-* Predictable
-* Serializable
-* Identical across dev & production
+### 🧩 Extensions System
+Extend the runtime with custom Rust engines using **Titan Extensions**.
+* `titan create ext <name>`: Scaffold a new extension.
+* `titan run ext`: Test your extension in a lightweight harness.
 
 ---
 
-### 🔥 Developer Experience
+# 📦 Deployment
 
-* Hot reload dev server (`titan dev`)
-* Automatic rebundling of actions
-* Automatic Rust server restart
-* Colored request logs
-* Per-route timing metrics
-* Action-aware logs
+Titan compiles your entire app—JS code, Rust code, and server logic—into a **single executable**.
 
-Example runtime log:
-
-```
-[Titan] GET /user/90 → getUser (dynamic) in 0.42ms
-[Titan] log(getUser): Fetching user 90
-```
+* **Tiny Docker Images**: Alpine-based, ~20MB compressed.
+* **Instant Startup**: No node_modules overhead.
+* **Secure**: No access to system APIs from JS unless explicitly bridged.
 
 ---
 
-### 🧨 Error Handling & Diagnostics
-
-* JavaScript runtime errors captured safely
-* Action-aware error reporting
-* Line & column hints from runtime
-* Red-colored error logs
-* No server crashes on user mistakes
-* Safe fallback for `undefined` returns
+# 🧱 Architecture Note
+Titan is **not** a Node.js framework. It is a Rust server that speaks JavaScript.
+* **No Event Loop** for JS (Request/Response model).
+* **No `require`** (Use raw imports or bundled dependencies).
+* **True Isolation** per request.
 
 ---
-
-### ⚙ Build & Deployment
-
-* Native Rust binary output
-* Zero-config Dockerfile generation
-* Multi-stage optimized Docker builds
-* Works on:
-
-  * Railway
-  * Fly.io
-  * Render
-  * VPS
-  * Kubernetes
-* No Node.js required in production
-
----
-
----
-
-### 🧩 Titan Extensions & Test Harness
-
-Titan Planet isn't just a framework; it's an extensible platform. You can build custom extensions to add new native capabilities to the `t` runtime.
-
-*   **`titan create ext <name>`**: Scaffold a new Titan Extension template (supports JS and Native Rust modules).
-*   **`titan run ext`**: Launch the **Titan Test Harness**. This provides a "lite" Titan runtime environment that automatically:
-    *   Builds your native Rust code.
-    *   Links your extension to a temporary project.
-    *   Generates a test suite to verify your extension's methods.
-    *   Starts a live server to test extension logic in a real-world scenario.
-
----
-
-### 🧱 Architecture Guarantees
-
-# 🧩 Example Action (Updated – No `globalThis` Needed)
-
-```js
-export function getUser(req) {
-  t.log("User id:", req.params.id);
-
-  return {
-    id: Number(req.params.id),
-    method: req.method
-  };
-}
-```
-
-That’s it.
-No exports wiring. No globals. No boilerplate.
-
----
-
-# 📦 Version
 
 **Titan v26 — Stable**
+* Production-ready Hybrid Runtime
+* Native Rust Performance
+* Zero-Config Cloud Deployment
 
-* Production-ready runtime
-* Safe JS execution
-* Native Rust performance
-* Designed for cloud & AI workloads
-
----

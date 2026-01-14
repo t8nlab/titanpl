@@ -2,17 +2,21 @@
 node_modules/
 
 # Rust build
-/server/target/
+server/target/
+templates/*/server/target/
 
-# Titan build artifacts (ignore in repo,
-# but regenerate before deployment)
+# Titan build artifacts
 server/actions/*.jsbundle
 server/titan/*.jsbundle
 server/routes.json
 server/action_map.json
+templates/*/server/actions/*.jsbundle
+templates/*/server/titan/*.jsbundle
+templates/*/server/routes.json
+templates/*/server/action_map.json
+templates/*/server/src/actions_rust/
 
 .env
 .vscode
-# mkctx - generated context
 mkctx/
 mkctx.config.json

@@ -7,16 +7,28 @@ const actionsDir = path.join(root, "app", "actions");
 const outDir = path.join(root, "server", "actions");
 
 export async function bundle() {
-  console.log("[Titan] Bundling actions...");
+  const start = Date.now();
+  await bundleJs();
+  // console.log(`[Titan] Bundle finished in ${((Date.now() - start) / 1000).toFixed(2)}s`);
+}
+
+async function bundleJs() {
+  // console.log("[Titan] Bundling JS actions...");
 
   fs.mkdirSync(outDir, { recursive: true });
 
   // Clean old bundles
-  for (const file of fs.readdirSync(outDir)) {
-    fs.unlinkSync(path.join(outDir, file));
+  if (fs.existsSync(outDir)) {
+    const oldFiles = fs.readdirSync(outDir);
+    for (const file of oldFiles) {
+      fs.unlinkSync(path.join(outDir, file));
+    }
   }
 
   const files = fs.readdirSync(actionsDir).filter(f => f.endsWith(".js") || f.endsWith(".ts"));
+  if (files.length === 0) return;
+
+  console.log(`[Titan] Bundling ${files.length} JS actions...`);
 
   for (const file of files) {
     const actionName = path.basename(file, path.extname(file));
@@ -26,7 +38,7 @@ export async function bundle() {
     // Rust runtime expects `.jsbundle` extension — consistent with previous design
     const outfile = path.join(outDir, actionName + ".jsbundle");
 
-    console.log(`[Titan] Bundling ${entry} → ${outfile}`);
+    // console.log(`[Titan] Bundling ${entry} → ${outfile}`);
 
     await esbuild.build({
       entryPoints: [entry],
@@ -36,6 +48,7 @@ export async function bundle() {
       globalName: "__titan_exports",
       platform: "neutral",
       target: "es2020",
+      logLevel: "silent",
       banner: {
         js: "const defineAction = (fn) => fn;"
       },
@@ -51,15 +64,15 @@ export async function bundle() {
         throw new Error("[Titan] Action '${actionName}' not found or not a function");
       }
     
-      globalThis["${actionName}"] = fn;
+      globalThis["${actionName}"] = function(request_arg) {
+         globalThis.req = request_arg;
+         return fn(request_arg);
+      };
     })();
     `
       }
     });
-
-
-
   }
 
-  console.log("[Titan] Bundling finished.");
+  // console.log("[Titan] JS Bundling finished.");
 }

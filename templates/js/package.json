@@ -1,0 +1,13 @@
+{
+  "name": "titanpl",
+  "version": "1.0.0",
+  "description": "A Titan Planet server",
+  "type": "module",
+  "titan": {
+    "template": "js"
+  },
+  "dependencies": {
+    "chokidar": "^5.0.0",
+    "esbuild": "^0.27.2"
+  }
+}

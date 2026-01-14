@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import prompts from "prompts";
 import fs from "fs";
 import path from "path";
 import { execSync, spawn } from "child_process";
@@ -16,6 +17,7 @@ const green = (t) => `\x1b[32m${t}\x1b[0m`;
 const yellow = (t) => `\x1b[33m${t}\x1b[0m`;
 const red = (t) => `\x1b[31m${t}\x1b[0m`;
 const bold = (t) => `\x1b[1m${t}\x1b[0m`;
+const gray = (t) => `\x1b[90m${t}\x1b[0m`;
 
 /* -------------------------------------------------------
  * Invocation detection (tit vs titan)
@@ -120,26 +122,54 @@ ${yellow("Note: `tit` is supported as a legacy alias.")}
 /* -------------------------------------------------------
  * INIT
  * ----------------------------------------------------- */
-function initProject(name) {
+async function initProject(name, templateName) {
     if (!name) {
-        console.log(red("Usage: titan init <project>"));
+        console.log(red("Usage: titan init <project> [--template <js|rust>]"));
         return;
     }
 
+    let selectedTemplate = templateName;
+
+    if (!selectedTemplate) {
+        const response = await prompts({
+            type: 'select',
+            name: 'value',
+            message: 'Select a template:',
+            choices: [
+                { title: 'JavaScript', description: 'Standard Titan app with JS actions', value: 'js' },
+                { title: `Rust + JavaScript  ${yellow('(Beta)')}`, description: 'High-performance Rust actions + JS flexibility', value: 'rust' }
+            ],
+            initial: 0
+        });
+
+        if (!response.value) {
+            console.log(red("✖ Operation cancelled"));
+            return;
+        }
+        selectedTemplate = response.value;
+    }
+
     const target = path.join(process.cwd(), name);
-    const templateDir = path.join(__dirname, "templates");
+    const templateDir = path.join(__dirname, "templates", selectedTemplate);
+
+    if (!fs.existsSync(templateDir)) {
+        console.log(red(`Template '${selectedTemplate}' not found. Available: js, rust`));
+        return;
+    }
 
     if (fs.existsSync(target)) {
         console.log(yellow(`Folder already exists: ${target}`));
         return;
     }
 
-    console.log(cyan(`Creating Titan project → ${target}`));
+    console.log("\n" + bold(cyan("🚀 Initializing Titan Project...")));
+    console.log(gray(`   Target:   ${target}`));
+    console.log(gray(`   Template: ${selectedTemplate === 'rust' ? 'Rust + JS (Native Perf)' : 'JavaScript (Standard)'}`));
 
     // ----------------------------------------------------------
-    // 1. Copy full template directory (excluding extension folder)
+    // 1. Copy full template directory
     // ----------------------------------------------------------
-    copyDir(templateDir, target, ["extension", "_gitignore", "_dockerignore"]);
+    copyDir(templateDir, target, ["_gitignore", "_dockerignore"]);
 
     // ----------------------------------------------------------
     // 2. Explicitly install dotfiles
@@ -164,19 +194,24 @@ function initProject(name) {
         fs.copyFileSync(dockerfileSrc, path.join(target, "Dockerfile"));
     }
 
-    console.log(green("✔ Titan project created!"));
-    console.log(cyan("Installing dependencies..."));
+    console.log(green("✔ Project structure created"));
+    console.log(cyan("📦 Installing dependencies..."));
 
-    execSync(`npm install esbuild chokidar --silent`, {
-        cwd: target,
-        stdio: "inherit",
-    });
+    try {
+        execSync(`npm install esbuild chokidar --silent`, {
+            cwd: target,
+            stdio: "inherit",
+        });
+        console.log(green("✔ Dependencies installed"));
+    } catch (e) {
+        console.log(yellow("⚠ Failed to auto-install dependencies. Please run 'npm install' manually."));
+    }
 
-    console.log(green("✔ Dependencies installed"));
+    console.log("\n" + bold(green("🎉 You're all set!")));
     console.log(`
-Next steps:
-  cd ${name}
-  titan dev
+  ${gray("Next steps:")}
+    ${cyan(`cd ${name}`)}
+    ${cyan("titan dev")}
 `);
 }
 
@@ -278,8 +313,19 @@ function updateTitan() {
 
     const projectTitan = path.join(root, "titan");
     const projectServer = path.join(root, "server");
+    const projectPkg = path.join(root, "package.json");
 
-    const templatesRoot = path.join(__dirname, "templates");
+    let templateType = "js"; // Default
+    if (fs.existsSync(projectPkg)) {
+        try {
+            const pkg = JSON.parse(fs.readFileSync(projectPkg, "utf-8"));
+            if (pkg.titan && pkg.titan.template) {
+                templateType = pkg.titan.template;
+            }
+        } catch (e) { }
+    }
+
+    const templatesRoot = path.join(__dirname, "templates", templateType);
     const templateTitan = path.join(templatesRoot, "titan");
     const templateServer = path.join(templatesRoot, "server");
 
@@ -341,15 +387,22 @@ function updateTitan() {
     console.log(green("✔ Updated server/src/"));
 
     // Root-level config files
-    [".gitignore", ".dockerignore", "Dockerfile", "jsconfig.json"].forEach((file) => {
-        const src = path.join(templatesRoot, file);
-        const dest = path.join(root, file);
+    const rootFiles = {
+        "_gitignore": ".gitignore",
+        "_dockerignore": ".dockerignore",
+        "Dockerfile": "Dockerfile",
+        "jsconfig.json": "jsconfig.json"
+    };
+
+    for (const [srcName, destName] of Object.entries(rootFiles)) {
+        const src = path.join(templatesRoot, srcName);
+        const dest = path.join(root, destName);
 
         if (fs.existsSync(src)) {
             fs.copyFileSync(src, dest);
-            console.log(green(`✔ Updated ${file}`));
+            console.log(green(`✔ Updated ${destName}`));
         }
-    });
+    }
 
     // app/titan.d.ts (JS typing contract)
     const appDir = path.join(root, "app");
@@ -473,7 +526,18 @@ if (cmd === "create" && args[1] === "ext") {
     runExtension();
 } else {
     switch (cmd) {
-        case "init": initProject(args[1]); break;
+        case "init": {
+            const projName = args[1];
+            let tpl = null;
+
+            const tIndex = args.indexOf("--template") > -1 ? args.indexOf("--template") : args.indexOf("-t");
+            if (tIndex > -1 && args[tIndex + 1]) {
+                tpl = args[tIndex + 1];
+            }
+
+            initProject(projName, tpl);
+            break;
+        }
         case "dev": devServer(); break;
         case "build": buildProd(); break;
         case "start": startProd(); break;

@@ -3,6 +3,7 @@ use bcrypt::{DEFAULT_COST, hash, verify};
 use jsonwebtoken::{DecodingKey, EncodingKey, Header, Validation, decode, encode};
 use reqwest::{
     blocking::Client,
+    Method,
     header::{HeaderMap, HeaderName, HeaderValue},
 };
 use serde_json::Value;
@@ -17,6 +18,148 @@ use std::collections::HashMap;
 use std::fs;
 use std::sync::Mutex;
 use walkdir::WalkDir;
+
+
+// ----------------------------------------------------------------------------
+// RUST ACTION API
+// ----------------------------------------------------------------------------
+
+pub struct T {
+    pub jwt: Jwt,
+    pub password: Password,
+}
+
+#[allow(non_upper_case_globals)]
+pub static t: T = T {
+    jwt: Jwt,
+    password: Password,
+};
+
+pub struct Jwt;
+impl Jwt {
+    pub fn sign(&self, payload: Value, secret: &str, options: Option<Value>) -> anyhow::Result<String> {
+        let mut final_payload = match payload {
+            Value::Object(map) => map,
+            _ => serde_json::Map::new(), // Should probably error or handle string payload like JS
+        };
+
+        if let Some(opts) = options {
+             if let Some(exp_val) = opts.get("expiresIn") {
+                // Handle both number (seconds) and string ("1h")
+                let seconds = if let Some(n) = exp_val.as_u64() {
+                    Some(n)
+                } else if let Some(s) = exp_val.as_str() {
+                    parse_expires_in(s)
+                } else {
+                    None
+                };
+
+                if let Some(sec) = seconds {
+                     let now = SystemTime::now()
+                        .duration_since(UNIX_EPOCH)
+                        .unwrap()
+                        .as_secs();
+                    final_payload.insert("exp".to_string(), Value::Number(serde_json::Number::from(now + sec)));
+                }
+             }
+        }
+
+        let token = encode(
+            &Header::default(),
+            &Value::Object(final_payload),
+            &EncodingKey::from_secret(secret.as_bytes()),
+        )?;
+        Ok(token)
+    }
+
+    pub fn verify(&self, token: &str, secret: &str) -> anyhow::Result<Value> {
+        let mut validation = Validation::default();
+        validation.validate_exp = true; 
+
+        let data = decode::<Value>(
+            token,
+            &DecodingKey::from_secret(secret.as_bytes()),
+            &validation,
+        )?;
+        Ok(data.claims)
+    }
+}
+
+pub struct Password;
+impl Password {
+    pub fn hash(&self, password: &str) -> anyhow::Result<String> {
+        let h = hash(password, DEFAULT_COST)?;
+        Ok(h)
+    }
+
+    pub fn verify(&self, password: &str, hash_str: &str) -> bool {
+        verify(password, hash_str).unwrap_or(false)
+    }
+}
+
+impl T {
+    pub fn log(&self, msg: impl std::fmt::Display) {
+        println!(
+            "{} {}",
+            blue("[Titan]"),
+            gray(&format!("\x1b[90mlog(rust)\x1b[0m\x1b[97m: {}\x1b[0m", msg))
+        );
+    }
+
+    pub fn read(&self, path: &str) -> anyhow::Result<String> {
+        let root = std::env::current_dir()?;
+        let target = root.join(path);
+        let target = target.canonicalize()?;
+        Ok(fs::read_to_string(target)?)
+    }
+
+    pub async fn fetch(&self, url: &str, options: Option<FetchOptions>) -> anyhow::Result<FetchResponse> {
+        let client = reqwest::Client::new();
+        let opts = options.unwrap_or_default();
+        
+        let mut req = client.request(opts.method.parse().unwrap_or(Method::GET), url);
+
+        if let Some(headers) = opts.headers {
+            let mut map = HeaderMap::new();
+            for (k, v) in headers {
+                if let (Ok(name), Ok(val)) = (
+                    HeaderName::from_bytes(k.as_bytes()),
+                    HeaderValue::from_str(&v),
+                ) {
+                    map.insert(name, val);
+                }
+            }
+            req = req.headers(map);
+        }
+
+        if let Some(body) = opts.body {
+            req = req.body(body);
+        }
+
+        let res = req.send().await?;
+        let status = res.status().as_u16();
+        let text = res.text().await?;
+
+        Ok(FetchResponse {
+            status,
+            body: text,
+            ok: status >= 200 && status < 300
+        })
+    }
+}
+
+#[derive(Default)]
+pub struct FetchOptions {
+    pub method: String,
+    pub headers: Option<std::collections::HashMap<String, String>>,
+    pub body: Option<String>,
+}
+
+pub struct FetchResponse {
+    pub status: u16,
+    pub body: String,
+    pub ok: bool,
+}
 
 // ----------------------------------------------------------------------------
 // GLOBAL REGISTRY
@@ -109,14 +252,16 @@ pub fn load_project_extensions(root: PathBuf) {
     search_dirs.sort();
     search_dirs.dedup();
 
-    println!("{} Scanning extension directories:", blue("[Titan]"));
+    // println!("{} Scanning extension directories:", blue("[Titan]"));
     for d in &search_dirs {
+        /*
         let label = if d.to_string_lossy().contains(".ext") {
              crate::utils::green("(Production)")
         } else {
              crate::utils::yellow("(Development)")
         };
         println!("   • {} {}", d.display(), label);
+        */
     }
 
     // =====================================================
@@ -245,20 +390,7 @@ pub fn load_project_extensions(root: PathBuf) {
     // 5. Store registry globally
     // =====================================================
     if modules.is_empty() {
-         println!("{} {}", blue("[Titan]"), crate::utils::yellow("No extensions loaded."));
-         // Debug: list files in search dirs to assist debugging
-         for dir in &search_dirs {
-             if dir.exists() {
-                 println!("{} Listing contents of {}:", blue("[Titan]"), dir.display());
-                 for entry in WalkDir::new(dir).max_depth(5) {
-                      if let Ok(e) = entry {
-                          println!("   - {}", e.path().display());
-                      }
-                 }
-             } else {
-                 println!("{} Directory not found: {}", blue("[Titan]"), dir.display());
-             }
-         }
+         // println!("{} {}", blue("[Titan]"), crate::utils::yellow("No extensions loaded."));
     }
 
     *REGISTRY.lock().unwrap() = Some(Registry {
@@ -333,7 +465,7 @@ fn native_read(
 
     // 3. Canonicalize (resolves ../)
     let target = match joined.canonicalize() {
-        Ok(t) => t,
+        Ok(target) => target,
         Err(_) => {
             throw(scope, &format!("t.read: file not found: {}", path_str));
             return;
@@ -554,7 +686,7 @@ fn native_jwt_sign(
     );
 
     match token {
-        Ok(t) => retval.set(v8_str(scope, &t).into()),
+        Ok(tok) => retval.set(v8_str(scope, &tok).into()),
         Err(e) => throw(scope, &e.to_string()),
     }
 }

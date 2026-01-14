@@ -1,0 +1,19 @@
+{
+    "compilerOptions": {
+        "module": "esnext",
+        "target": "esnext",
+        "checkJs": false,
+        "noImplicitAny": false,
+        "allowJs": true,
+        "moduleResolution": "node",
+        "baseUrl": ".",
+        "paths": {
+            "*": [
+                "./app/*"
+            ]
+        }
+    },
+    "include": [
+        "app/**/*"
+    ]
+}
