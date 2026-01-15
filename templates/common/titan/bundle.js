@@ -14,7 +14,7 @@ export async function bundle() {
   // console.log(`[Titan] Bundle finished in ${((Date.now() - start) / 1000).toFixed(2)}s`);
 }
 
-async function bundleJs() {
+export async function bundleJs() {
   // console.log("[Titan] Bundling JS actions...");
 
   fs.mkdirSync(outDir, { recursive: true });
