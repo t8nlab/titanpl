@@ -16,6 +16,9 @@ templates/*/server/routes.json
 templates/*/server/action_map.json
 templates/*/server/src/actions_rust/
 
+
+test-apps/
+
 .env
 .vscode
 mkctx/

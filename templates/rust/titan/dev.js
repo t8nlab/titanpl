@@ -227,7 +227,15 @@ async function startDev() {
         hasRust = fs.readdirSync(actionsDir).some(f => f.endsWith(".rs"));
     }
 
-    const mode = hasRust ? "Rust + JS Actions" : "JS Actions";
+    const isTs = fs.existsSync(path.join(root, "tsconfig.json")) ||
+        fs.existsSync(path.join(root, "app", "app.ts"));
+
+    let mode = "";
+    if (hasRust) {
+        mode = isTs ? "Rust + TS Actions" : "Rust + JS Actions";
+    } else {
+        mode = isTs ? "TS Actions" : "JS Actions";
+    }
     const version = getTitanVersion();
 
     console.clear();

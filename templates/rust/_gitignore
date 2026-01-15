@@ -8,6 +8,7 @@ yarn.lock
 
 # Titan Runtime (Auto-generated - DO NOT COMMIT)
 titan/server-bin*
+.titan/
 .ext/
 server/routes.json
 server/action_map.json

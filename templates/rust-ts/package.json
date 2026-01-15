@@ -1,0 +1,14 @@
+{
+  "name": "titanpl",
+  "version": "1.0.0",
+  "description": "A Titan Planet server (Rust + TypeScript)",
+  "type": "module",
+  "titan": {
+    "template": "rust-ts"
+  },
+  "dependencies": {
+    "chokidar": "^5.0.0",
+    "esbuild": "^0.27.2",
+    "typescript": "^5.0.0"
+  }
+}

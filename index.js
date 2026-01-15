@@ -123,37 +123,82 @@ ${yellow("Note: `tit` is supported as a legacy alias.")}
  * INIT
  * ----------------------------------------------------- */
 async function initProject(name, templateName) {
-    if (!name) {
-        console.log(red("Usage: titan init <project> [--template <js|rust>]"));
-        return;
-    }
+    let projName = name;
 
-    let selectedTemplate = templateName;
-
-    if (!selectedTemplate) {
+    if (!projName) {
         const response = await prompts({
-            type: 'select',
+            type: 'text',
             name: 'value',
-            message: 'Select a template:',
-            choices: [
-                { title: 'JavaScript', description: 'Standard Titan app with JS actions', value: 'js' },
-                { title: `Rust + JavaScript  ${yellow('(Beta)')}`, description: 'High-performance Rust actions + JS flexibility', value: 'rust' }
-            ],
-            initial: 0
+            message: 'Project name:',
+            initial: 'my-titan-app'
         });
 
         if (!response.value) {
             console.log(red("✖ Operation cancelled"));
             return;
         }
-        selectedTemplate = response.value;
+        projName = response.value;
     }
 
-    const target = path.join(process.cwd(), name);
+    let selectedTemplate = templateName;
+
+    if (!selectedTemplate) {
+        // 1. Language Selection
+        const langRes = await prompts({
+            type: 'select',
+            name: 'value',
+            message: 'Select language:',
+            choices: [
+                { title: 'JavaScript', value: 'js' },
+                { title: 'TypeScript', value: 'ts' }
+            ],
+            initial: 0
+        });
+
+        if (!langRes.value) {
+            console.log(red("✖ Operation cancelled"));
+            return;
+        }
+        const lang = langRes.value;
+
+        // 2. Template Selection
+        const archRes = await prompts({
+            type: 'select',
+            name: 'value',
+            message: 'Select template:',
+            choices: [
+                {
+                    title: `Standard (${lang.toUpperCase()})`,
+                    description: `Standard Titan app with ${lang.toUpperCase()} actions`,
+                    value: 'standard'
+                },
+                {
+                    title: `Rust + ${lang.toUpperCase()} (Hybrid)`,
+                    description: `High-performance Rust actions + ${lang.toUpperCase()} flexibility`,
+                    value: 'hybrid'
+                }
+            ],
+            initial: 0
+        });
+
+        if (!archRes.value) {
+            console.log(red("✖ Operation cancelled"));
+            return;
+        }
+        const arch = archRes.value;
+
+        if (lang === 'js') {
+            selectedTemplate = arch === 'standard' ? 'js' : 'rust';
+        } else {
+            selectedTemplate = arch === 'standard' ? 'ts' : 'rust-ts';
+        }
+    }
+
+    const target = path.join(process.cwd(), projName);
     const templateDir = path.join(__dirname, "templates", selectedTemplate);
 
     if (!fs.existsSync(templateDir)) {
-        console.log(red(`Template '${selectedTemplate}' not found. Available: js, rust`));
+        console.log(red(`Template '${selectedTemplate}' not found.`));
         return;
     }
 
@@ -164,7 +209,7 @@ async function initProject(name, templateName) {
 
     console.log("\n" + bold(cyan("🚀 Initializing Titan Project...")));
     console.log(gray(`   Target:   ${target}`));
-    console.log(gray(`   Template: ${selectedTemplate === 'rust' ? 'Rust + JS (Native Perf)' : 'JavaScript (Standard)'}`));
+    console.log(gray(`   Template: ${selectedTemplate}`));
 
     // ----------------------------------------------------------
     // 1. Copy full template directory
@@ -198,7 +243,7 @@ async function initProject(name, templateName) {
     console.log(cyan("📦 Installing dependencies..."));
 
     try {
-        execSync(`npm install esbuild chokidar --silent`, {
+        execSync(`npm install --silent`, {
             cwd: target,
             stdio: "inherit",
         });
@@ -210,7 +255,7 @@ async function initProject(name, templateName) {
     console.log("\n" + bold(green("🎉 You're all set!")));
     console.log(`
   ${gray("Next steps:")}
-    ${cyan(`cd ${name}`)}
+    ${cyan(`cd ${projName}`)}
     ${cyan("titan dev")}
 `);
 }
@@ -335,7 +380,9 @@ function updateTitan() {
     }
 
     if (!fs.existsSync(templateServer)) {
-        console.log(red("CLI is corrupted — server template missing."));
+        console.log(red(`CLI seems corrupted or incomplete.`));
+        console.log(red(`Expected server template at: ${templateServer}`));
+        console.log(yellow(`If you are running from npx, try clearing cache or installing a specific version.`));
         return;
     }
 

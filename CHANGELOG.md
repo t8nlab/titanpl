@@ -1,6 +1,22 @@
 # Changelog
 
-All notable changes to the **Titan Planet** project will be documented in this file.
+## [26.9.0] - 2026-01-15
+
+### 🛡️ Reliability & Safety
+- **Strict TypeScript Enforcement**: The dev server (`titan dev`) now enforces a "Zero Tolerance" policy for type errors. If `tsc` reports any issues, the server is immediately killed to prevent running invalid or outdated code.
+- **Zombie Process Elimination**: Fixed race conditions where the server would restart prematurely while TypeScript was still checking files.
+
+### 🐛 Debugging Experience
+- **Native-Like Runtime Errors**: JavaScript runtime errors (e.g. `TypeError`, `ReferenceError`) now appear in the terminal with full **TypeScript-style styling**, including:
+  - Precise file paths (e.g., `app/actions/hello.ts:12:4`) instead of `undefined`.
+  - Line and column numbers.
+  - Code snippet previews with error pointers (`^`).
+
+### ⚡ Fixes
+- **Windows Port Conflicts**: Implemented robust retry logic for `os error 10048` to handle aggressive port reuse on Windows.
+- **CLI Update Fix**: Resolved issues with `npx tit update` failing due to missing template paths in certain npm installation environments.
+
+
 
 ## [26.8.3] - 2026-01-14
 
