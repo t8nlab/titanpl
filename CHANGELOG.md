@@ -1,5 +1,23 @@
 # Changelog
 
+## [26.9.2] - 2026-01-17
+
+### 🏗️ Template Modularity & Architecture
+- **Modular Template System**: Refactored `index.js` to implement a two-phase copy logic (Common + Specific) for templates, allowing for deterministic project creation.
+- **Smart Mapping**: `initProject` now correctly maps user selections (Language + Architecture) to the distinct template folders (`js`, `ts`, `rust-js`, `rust-ts`).
+- **Metadata Injection**: New projects now include a `titan.template` key in `package.json` (e.g., `"template": "rust-ts"`), ensuring the CLI always knows exactly which template to use for updates.
+
+### 🔄 Deterministic Updates
+- **Safe `titan update`**: The update command now reads the injected metadata to determine the correct source template, preventing accidental overrides (e.g., replacing a Rust binary with a JS-only runtime).
+
+### 🧪 Testing & Stability
+- **Robust Mocking**: Added comprehensive mocks for `path` and `url` native modules in the test suite.
+- **State Isolation**: Fixed test state leakage in `prompts`, ensuring reliable test execution.
+- **Integrated Coverage**: Added tests for template mapping and metadata verification.
+
+### 📚 Documentation
+- Updated `README.md` to reflect the new modular architecture and provided clearer Quick Start options.
+
 ## [26.9.1] - 2026-01-16
 
 ### 🛡️ Type Safety & SDK
