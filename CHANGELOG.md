@@ -1,5 +1,13 @@
 # Changelog
 
+## [26.9.4] - 2026-01-17
+
+### 🧩 Extension System Enhancement
+- **Complex Extension Support**: Added `@titanpl/core` (v1.0.1) dependency to provide core functionality for building and managing complex extensions.
+  - Enables advanced extension features across all template types (JS, TS, Rust-JS, Rust-TS).
+  - Provides foundational APIs for extension development and runtime integration.
+  - Integrated into all project templates for consistent extension support.
+
 ## [26.9.2] - 2026-01-17
 
 ### 🏗️ Template Modularity & Architecture
