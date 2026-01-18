@@ -12,16 +12,15 @@
     "esbuild": "^0.27.2",
     "typescript": "^5.0.0"
   },
-  "devDependencies": {
-    "@vitest/coverage-v8": "^3.0.0",
-    "@vitest/ui": "^3.0.0",
-    "vitest": "^3.0.0"
-  },
   "scripts": {
-    "test": "vitest run",
-    "test:watch": "vitest",
-    "test:coverage": "vitest run --coverage",
-    "test:ui": "vitest --ui",
-    "typecheck": "tsc --noEmit"
+    "build": "titan build",
+    "dev": "titan dev",
+    "start": "titan start",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix"
+  },
+  "devDependencies": {
+    "eslint": "^9.39.2",
+    "globals": "^17.0.0"
   }
 }
