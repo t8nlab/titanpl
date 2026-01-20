@@ -15,6 +15,7 @@ export interface TitanBuilder {
 
 // The default export from titan.js is the Builder
 declare const builder: TitanBuilder;
+export const Titan: TitanBuilder;
 export default builder;
 
 /**
@@ -68,7 +69,7 @@ declare global {
      * Titan Runtime Utilities
      * (Available globally in the runtime, e.g. inside actions)
      */
-    const t: {
+    interface TitanRuntimeUtils {
         /**
          * Log messages to the server console with Titan formatting.
          */
@@ -113,5 +114,16 @@ declare global {
          * Titan Validator (Zod-compatible)
          */
         valid: any;
-    };
+    }
+
+    /**
+     * Titan Runtime Utilities
+     * (Available globally in the runtime, e.g. inside actions)
+     */
+    const t: TitanRuntimeUtils;
+
+    /**
+     * Titan Runtime Utilities (Alias for t)
+     */
+    const Titan: TitanRuntimeUtils;
 }

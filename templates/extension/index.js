@@ -4,6 +4,7 @@
  */
 
 // Define your extension Key
+if (typeof Titan === "undefined") globalThis.Titan = t;
 const EXT_KEY = "{{name}}";
 
 t.log(EXT_KEY, "Extension loading...");

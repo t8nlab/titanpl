@@ -19,6 +19,15 @@ use std::collections::HashMap;
 use std::fs;
 
 // ----------------------------------------------------------------------------
+// T MODULE (Rust API equivalent to JS t object)
+// ----------------------------------------------------------------------------
+pub mod t {
+    pub fn log(module: &str, msg: &str) {
+        println!("{} {}", crate::utils::blue("[Titan]"), crate::utils::gray(&format!("\x1b[90mlog({})\x1b[0m\x1b[97m: {}\x1b[0m", module, msg)));
+    }
+}
+
+// ----------------------------------------------------------------------------
 // GLOBAL REGISTRY
 // ----------------------------------------------------------------------------
 
@@ -535,7 +544,13 @@ fn js_from_value<'a>(
     val: serde_json::Value,
 ) -> v8::Local<'a, v8::Value> {
     match ret_type {
-        ReturnType::String => v8::String::new(scope, val.as_str().unwrap_or("")).unwrap().into(),
+        ReturnType::String => {
+            let s = match val.as_str() {
+                Some(x) => x,
+                None => "",
+            };
+            v8::String::new(scope, s).unwrap().into()
+        },
         ReturnType::F64 => v8::Number::new(scope, val.as_f64().unwrap_or(0.0)).into(),
         ReturnType::Bool => v8::Boolean::new(scope, val.as_bool().unwrap_or(false)).into(),
         ReturnType::Json => {
@@ -566,10 +581,32 @@ fn js_from_value<'a>(
 macro_rules! dispatch_ret {
     ($ptr:expr, $ret:expr, ($($arg_ty:ty),*), ($($arg:expr),*)) => {
         match $ret {
-            ReturnType::String => { let f: extern "C" fn($($arg_ty),*) -> String; f = std::mem::transmute($ptr); serde_json::Value::String(f($($arg),*)) },
+            ReturnType::String => { 
+                let f: extern "C" fn($($arg_ty),*) -> *mut std::os::raw::c_char; 
+                f = std::mem::transmute($ptr); 
+                let ptr = f($($arg),*);
+                if ptr.is_null() {
+                    serde_json::Value::String(String::new())
+                } else {
+                    let s = unsafe { std::ffi::CStr::from_ptr(ptr).to_string_lossy().into_owned() };
+                    // We leak the pointer here because we don't have a shared allocator/free function. 
+                    // This prevents the double-free/heap corruption crash.
+                    serde_json::Value::String(s)
+                }
+            },
             ReturnType::F64 => { let f: extern "C" fn($($arg_ty),*) -> f64; f = std::mem::transmute($ptr); serde_json::json!(f($($arg),*)) },
             ReturnType::Bool => { let f: extern "C" fn($($arg_ty),*) -> bool; f = std::mem::transmute($ptr); serde_json::json!(f($($arg),*)) },
-            ReturnType::Json => { let f: extern "C" fn($($arg_ty),*) -> serde_json::Value; f = std::mem::transmute($ptr); f($($arg),*) },
+            ReturnType::Json => { 
+                let f: extern "C" fn($($arg_ty),*) -> *mut std::os::raw::c_char; 
+                f = std::mem::transmute($ptr); 
+                let ptr = f($($arg),*);
+                if ptr.is_null() {
+                    serde_json::Value::Null
+                } else {
+                    let s = unsafe { std::ffi::CStr::from_ptr(ptr).to_string_lossy().into_owned() };
+                    serde_json::from_str(&s).unwrap_or(serde_json::Value::Null)
+                }
+             },
             ReturnType::Buffer => { let f: extern "C" fn($($arg_ty),*) -> Vec<u8>; f = std::mem::transmute($ptr); 
                 let v = f($($arg),*); 
                 serde_json::Value::Array(v.into_iter().map(serde_json::Value::from).collect()) 
@@ -619,10 +656,18 @@ fn native_invoke_extension(scope: &mut v8::HandleScope, args: v8::FunctionCallba
              1 => {
                  let v0 = vals.remove(0);
                  match sig.params[0] {
-                     ParamType::String => { let a0 = v0.as_str().unwrap_or("").to_string(); dispatch_ret!(ptr, sig.ret, (String), (a0)) },
+                     ParamType::String => { 
+                         let s = v0.as_str().unwrap_or("").to_string(); 
+                         let c = std::ffi::CString::new(s).unwrap();
+                         dispatch_ret!(ptr, sig.ret, (*const std::os::raw::c_char), (c.as_ptr())) 
+                     },
                      ParamType::F64 => { let a0 = v0.as_f64().unwrap_or(0.0); dispatch_ret!(ptr, sig.ret, (f64), (a0)) },
                      ParamType::Bool => { let a0 = v0.as_bool().unwrap_or(false); dispatch_ret!(ptr, sig.ret, (bool), (a0)) },
-                     ParamType::Json => { let a0 = v0; dispatch_ret!(ptr, sig.ret, (serde_json::Value), (a0)) },
+                     ParamType::Json => { 
+                         let s = v0.to_string(); 
+                         let c = std::ffi::CString::new(s).unwrap();
+                         dispatch_ret!(ptr, sig.ret, (*const std::os::raw::c_char), (c.as_ptr())) 
+                     },
                      ParamType::Buffer => { 
                          // Extract vec u8
                          let a0: Vec<u8> = if let Some(arr) = v0.as_array() {
@@ -637,14 +682,17 @@ fn native_invoke_extension(scope: &mut v8::HandleScope, args: v8::FunctionCallba
                  let v1 = vals.remove(0);
                  match (sig.params[0].clone(), sig.params[1].clone()) { // Clone to satisfy borrow checker if needed
                     (ParamType::String, ParamType::String) => {
-                        let a0 = v0.as_str().unwrap_or("").to_string();
-                        let a1 = v1.as_str().unwrap_or("").to_string();
-                        dispatch_ret!(ptr, sig.ret, (String, String), (a0, a1))
+                        let s0 = v0.as_str().unwrap_or("").to_string();
+                        let c0 = std::ffi::CString::new(s0).unwrap();
+                        let s1 = v1.as_str().unwrap_or("").to_string();
+                        let c1 = std::ffi::CString::new(s1).unwrap();
+                        dispatch_ret!(ptr, sig.ret, (*const std::os::raw::c_char, *const std::os::raw::c_char), (c0.as_ptr(), c1.as_ptr()))
                     },
                     (ParamType::String, ParamType::F64) => {
-                        let a0 = v0.as_str().unwrap_or("").to_string();
+                        let s0 = v0.as_str().unwrap_or("").to_string();
+                        let c0 = std::ffi::CString::new(s0).unwrap();
                         let a1 = v1.as_f64().unwrap_or(0.0);
-                        dispatch_ret!(ptr, sig.ret, (String, f64), (a0, a1))
+                        dispatch_ret!(ptr, sig.ret, (*const std::os::raw::c_char, f64), (c0.as_ptr(), a1))
                     },
                     // Add more combinations as needed. 
                      _ => { println!("Unsupported 2-arg signature"); serde_json::Value::Null }

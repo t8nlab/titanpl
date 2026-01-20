@@ -1,6 +1,6 @@
 {
     "name": "titanpl-sdk",
-    "version": "0.2.0",
+    "version": "0.2.1",
     "description": "Development SDK for Titan Planet. Provides TypeScript type definitions for the global 't' runtime object and a 'lite' test-harness runtime for building and verifying extensions.",
     "main": "index.js",
     "type": "module",

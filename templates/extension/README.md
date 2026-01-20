@@ -1,104 +1,65 @@
-# 🪐 Titan Extension: {{name}}
+# Titan Extension Template
 
-> Elevate Titan Planet with custom JavaScript and high-performance Native Rust logic.
+This template provides a starting point for building native extensions for Titan.
 
-Welcome to your new Titan extension! This template provides everything you need to build, test, and deploy powerful additions to the Titan project.
+## Directory Structure
 
----
+- `index.js`: The JavaScript entry point for your extension. It runs within the Titan runtime.
+- `index.d.ts`: TypeScript definitions for your extension. This ensures users get autocompletion when using your extension.
+- `native/`: (Optional) Rust source code for native high-performance logic.
+- `titan.json`: Configuration file defining your extension's native ABI (if using Rust).
 
-## 🛠 Project Structure
+## Type Definitions (`index.d.ts`)
 
-- `index.js`: The JavaScript entry point where you define your extension's API on the global `t` object.
-- `titan.json`: Manifest file defining extension metadata and Native module mappings.
-- `native/`: Directory for Rust source code.
-  - `src/lib.rs`: Your Native function implementations.
-  - `Cargo.toml`: Rust package and dependency configuration.
-- `jsconfig.json`: Enables full IntelliSense for the Titan Runtime API.
+The `index.d.ts` file is crucial for Developer Experience (DX). It allows Titan projects to "see" your extension's API on the global `t` object.
 
----
+### How it works
 
-## 🚀 Quick Start
+Titan uses **Declaration Merging** to extend the global `Titan.Runtime` interface. When a user installs your extension, this file acts as a plugin to their TypeScript environment.
 
-### 1. Install Dependencies
-Get full type support in your IDE:
-```bash
-npm install
-```
+### Customizing Types
 
-### 2. Build Native Module (Optional)
-If your extension uses Rust, compile it to a dynamic library:
-```bash
-cd native
-cargo build --release
-cd ..
-```
+Edit `index.d.ts` to match the API you expose in `index.js`.
 
-### 3. Test the Extension
-Use the Titan SDK to run a local test harness:
-```bash
-titan run ext
-```
-*Tip: Visit `http://localhost:3000/test` after starting the runner to see your extension in action!*
+**Example:**
 
----
-
-## 💻 Development Guide
-
-### Writing JavaScript
-Extensions interact with the global `t` object. It's best practice to namespace your extension:
+If your `index.js` looks like this:
 
 ```javascript
-t.{{name}} = {
-    myMethod: (val) => {
-        t.log("{{name}}", "Doing something...");
-        return val * 2;
-    }
+// index.js
+t.ext.my_cool_ext = {
+    greet: (name) => `Hello, ${name}!`,
+    compute: (x) => x * 2
 };
 ```
 
-### Writing Native Rust Functions
-Native functions should be marked with `#[unsafe(no_mangle)]` and use `extern "C"`:
+Your `index.d.ts` should look like this:
 
-```rust
-#[unsafe(no_mangle)]
-pub extern "C" fn multiply(a: f64, b: f64) -> f64 {
-    a * b
-}
-```
+```typescript
+// index.d.ts
+declare global {
+    namespace Titan {
+        interface Runtime {
+            "my-cool-ext": {
+                /**
+                 * Sends a greeting.
+                 */
+                greet(name: string): string;
 
-### Mapping Native Functions in `titan.json`
-Expose your Rust functions to JavaScript by adding them to the `native.functions` section:
-
-```json
-"functions": {
-    "add": {
-        "symbol": "add",
-        "parameters": ["f64", "f64"],
-        "result": "f64"
+                /**
+                 * Computes a value.
+                 */
+                compute(x: number): number;
+            }
+        }
     }
 }
+export { };
 ```
 
----
+## Native Bindings (Rust)
 
-## 🧪 Testing with Titan SDK
-
-The `titan run ext` command automates the testing workflow:
-1. It builds your native code.
-2. It sets up a temporary Titan project environment.
-3. It links your extension into `node_modules`.
-4. It starts the Titan Runtime at `http://localhost:3000`.
-
-You can modify the test harness or add custom test cases by exploring the generated `.titan_test_run` directory (it is git-ignored).
-
----
-
-## 📦 Deployment
-To use your extension in a Titan project:
-1. Publish your extension to npm or link it locally.
-2. In your Titan project: `npm install my-extension`.
-3. The Titan Runtime will automatically detect and load your extension if it contains a `titan.json`.
-
----
-
-Happy coding on Titan Planet! 🚀
+If your extension requires native performance or system access, use the `native/` directory.
+1. Define functions in `native/src/lib.rs`.
+2. Map them in `titan.json`.
+3. Call them from `index.js` using `Titan.native.invoke(...)` (or the helper provided in the template).

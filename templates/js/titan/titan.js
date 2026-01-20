@@ -119,4 +119,8 @@ const t = {
 };
 
 
+/**
+ * Titan App Builder (Alias for t)
+ */
+export const Titan = t;
 export default t;

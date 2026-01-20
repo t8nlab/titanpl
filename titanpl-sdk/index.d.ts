@@ -5,6 +5,10 @@ declare global {
      * Titan Runtime Global Object
      */
     const t: Titan.Runtime;
+    /**
+     * Titan Runtime Global Object 
+     */
+    const Titan: Titan.Runtime;
 }
 
 export namespace Titan {
@@ -18,7 +22,7 @@ export namespace Titan {
          * Read file content
          */
         read(path: string): string;
-        
+
         /**
          * Fetch API wrapper
          */

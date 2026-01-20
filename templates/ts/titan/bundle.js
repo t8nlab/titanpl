@@ -48,7 +48,7 @@ async function bundleJs(actionsDir, outDir) {
       target: "es2020",
       logLevel: "silent",
       banner: {
-        js: "const defineAction = (fn) => fn;"
+        js: "const defineAction = (fn) => fn; const Titan = t;"
       },
 
       footer: {
