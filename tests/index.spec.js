@@ -59,7 +59,6 @@ import prompts from "prompts";
 import fs from "fs";
 import { execSync, spawn } from "child_process";
 
-// Importar funciones del módulo
 import {
     cyan,
     green,
