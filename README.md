@@ -279,7 +279,7 @@ Titan is **not** a Node.js framework. It is a **Rust server with embedded V8 eng
 * **Cold Start**: ~3-5ms (embedded runtime eliminates disk I/O)
 * **Action Execute**: ~100-500µs
 * **Memory/Worker**: ~40-80MB (configurable via V8 flags)
-* **Throughput**: ~10k req/sec @ 200 concurrent connections
+* **Throughput**: ~10k - 19k req/sec @ 200 concurrent connections
 * **Latency**: ~14-17ms (p50), ~30ms (p97.5)
 
 ### When to Use TitanPL:
@@ -313,13 +313,6 @@ export const fetchUser = defineAction((req) => {
   return response;
 });
 ```
-
-For detailed performance optimization strategies, see [`PERFORMANCE.md`](./test-apps/test-js/server/PERFORMANCE.md).
-
----
-
-Here is a **clear, strong, marketing-friendly, developer-focused promotion section** that highlights TitanPL’s **multi-threaded JS runtime** in a powerful way.
-You can use this in your website, README, landing page, package description, or docs.
 
 ---
 
