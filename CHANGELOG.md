@@ -1,6 +1,6 @@
 # Changelog
 
-## [26.12.4] – 2026-01-25
+## [26.12.5] – 2026-01-25
 
 ### Minor Stability Release
 
