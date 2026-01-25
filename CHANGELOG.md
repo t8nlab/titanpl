@@ -1,5 +1,32 @@
 # Changelog
 
+## [26.12.4] – 2026-01-25
+
+### Minor Stability Release
+
+## ✨ Highlights
+
+### **Internal Polishing & Reliability Fixes**
+
+This update focuses on tightening small inconsistencies inside the Gravity worker pipeline and improving developer-facing clarity when working with actions, extensions, and internal APIs.
+
+## 🚀 Improvements
+
+* More consistent isolate warm-up across multi-core systems.
+* Reduced noisy logs during cold boot and first request.
+* Improved detection for missing extension manifests during startup.
+* Slightly faster worker-handover when running large action bundles.
+
+## 🐛 Fixes
+
+* Resolved a rare issue where `t.db.connect()` would emit a stale connection reference under heavy parallel load.
+* Fixed misformatted error traces when an action throws during JSON serialization.
+* Corrected edge-case bug where dynamic imports inside actions were not invalidating the module cache in watch mode.
+* Addressed occasional double-logging of worker crashes in debug builds.
+* Fixed minor memory leak involving per-request metadata inside long-lived isolates.
+
+---
+
 ## [26.12.3] – 2026-01-24
 
 ### Titan Gravity Runtime — Stable
