@@ -14,29 +14,46 @@ const red = (t) => `\x1b[31m${t}\x1b[0m`;
 const yellow = (t) => `\x1b[33m${t}\x1b[0m`;
 
 function copyDir(src, dest, excludes = []) {
+    // console.log(`DEBUG: copyDir ${src} -> ${dest}`);
+    if (!fs.existsSync(src)) {
+        console.log(red(`Source does not exist: ${src}`));
+        return;
+    }
+
     fs.mkdirSync(dest, { recursive: true });
-    for (const file of fs.readdirSync(src)) {
-        if (excludes.includes(file)) continue;
+
+    const files = fs.readdirSync(src);
+    // console.log(`DEBUG: Found ${files.length} files in ${src}`);
+
+    for (const file of files) {
+        if (excludes.includes(file)) {
+            // console.log(`DEBUG: Skipping excluded ${file}`);
+            continue;
+        }
 
         const srcPath = path.join(src, file);
         const destPath = path.join(dest, file);
 
-        // Prevent copying destination into itself (infinite loop protection)
-        if (path.resolve(destPath).startsWith(path.resolve(dest))) continue;
-
         if (fs.lstatSync(srcPath).isDirectory()) {
             copyDir(srcPath, destPath, excludes);
         } else {
-            fs.copyFileSync(srcPath, destPath);
+            // console.log(`DEBUG: Copying file ${file}`);
+            try {
+                fs.copyFileSync(srcPath, destPath);
+            } catch (err) {
+                console.log(red(`ERROR: Failed to copy ${file}: ${err.message}`));
+            }
         }
     }
 }
 
 function run() {
-    console.log(cyan("Titan SDK: Test Runner"));
+    console.log(cyan("TitanPl SDK: Test Runner"));
 
     // 1. Validate we are in an extension directory
     const cwd = process.cwd();
+    console.log(cyan(`Current Working Directory: ${cwd}`));
+
     const manifestPath = path.join(cwd, "titan.json");
     if (!fs.existsSync(manifestPath)) {
         console.log(red("Error: titan.json not found. Run this command inside your extension folder."));
@@ -60,7 +77,12 @@ function run() {
     }
 
     // 3. Setup Test Harness (Mini Titan Project)
+    // 3. Setup Test Harness (Mini Titan Project)
     const runDir = path.join(cwd, ".titan_test_run");
+    const appDir = path.join(runDir, "app");
+    const actionsDir = path.join(appDir, "actions");
+    const nmDir = path.join(runDir, "node_modules");
+
     const isFirstRun = !fs.existsSync(runDir);
 
     if (isFirstRun) {
@@ -68,24 +90,22 @@ function run() {
         fs.mkdirSync(runDir, { recursive: true });
 
         // Create app structure
-        const appDir = path.join(runDir, "app");
         fs.mkdirSync(appDir);
 
         // Create actions folder (required by Titan build)
-        const actionsDir = path.join(appDir, "actions");
         fs.mkdirSync(actionsDir);
 
         // Copy titan/ and server/ from templates
         const templatesDir = path.join(__dirname, "..", "templates");
+        console.log(cyan(`Templates Source: ${templatesDir}`));
 
         const titanSrc = path.join(templatesDir, "titan");
         const titanDest = path.join(runDir, "titan");
+
         if (fs.existsSync(titanSrc)) {
             copyDir(titanSrc, titanDest);
-            // Double check titan.js exists
             if (!fs.existsSync(path.join(titanDest, "titan.js"))) {
-                console.log(red(`Error: Failed to copy titan.js to ${titanDest}`));
-                process.exit(1);
+                throw new Error("Failed to copy titan.js template");
             }
         } else {
             console.log(red(`Error: Titan templates not found at ${titanSrc}`));
@@ -103,41 +123,33 @@ function run() {
 
         // Create package.json for the test harness
         const pkgJson = {
-            "type": "module"
+            "type": "module",
+            "dependencies": {
+                // We can add dependencies here if needed
+            }
         };
         fs.writeFileSync(path.join(runDir, "package.json"), JSON.stringify(pkgJson, null, 2));
 
         // Create 'node_modules'
-        fs.mkdirSync(path.join(runDir, "node_modules"));
+        // const nmDir = path.join(runDir, "node_modules"); // Already defined
+        fs.mkdirSync(nmDir);
     } else {
         console.log(cyan("Using existing test environment..."));
     }
 
-    // Always Ensure Extension Link is Fresh
-    const nmDir = path.join(runDir, "node_modules");
+    // const nmDir = path.join(runDir, "node_modules"); // Already defined
     if (!fs.existsSync(nmDir)) fs.mkdirSync(nmDir, { recursive: true });
 
+    // COPY Extension to node_modules/NAME (Force Copy to avoid Symlink Loops)
     const extDest = path.join(nmDir, name);
+    console.log(cyan(`Copying extension to ${extDest}...`));
 
-    // Remove old link/folder if exists to ensure freshness
-    if (fs.existsSync(extDest)) {
-        try {
-            fs.rmSync(extDest, { recursive: true, force: true });
-        } catch (e) { }
-    }
-
-    // Link current extension to node_modules/NAME
-    try {
-        // Use junction for Windows compat without admin rights
-        fs.symlinkSync(cwd, extDest, "junction");
-    } catch (e) {
-        // Fallback to copy if link fails
-        // console.log(yellow("Linking failed, copying extension files..."));
-        copyDir(cwd, extDest, ['.titan_test_run', 'node_modules', '.git', 'target']);
-    }
+    // Always exclude the test run folder itself + standard ignores
+    const excludes = ['.titan_test_run', 'node_modules', '.git', 'target', 'dist'];
+    copyDir(cwd, extDest, excludes);
 
     // Create default test files ONLY if they don't exist
-    const actionsDir = path.join(runDir, "app", "actions");
+    // const actionsDir = path.join(runDir, "app", "actions"); // Already defined
     const testActionPath = path.join(actionsDir, "test.js");
 
     if (!fs.existsSync(testActionPath)) {
@@ -176,7 +188,12 @@ function run() {
     const appJsPath = path.join(runDir, "app", "app.js");
     if (!fs.existsSync(appJsPath)) {
         const testScript = `import t from "../titan/titan.js";
-import "${name}";
+
+// 1. Expose 't' globally because extensions expect it (like in the real runtime)
+globalThis.t = t;
+
+// 2. Dynamic import ensures 't' is set BEFORE the extension loads
+await import("${name}");
 
 // Extension test harness for: ${name}
 const ext = t["${name}"];
