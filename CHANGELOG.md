@@ -1,5 +1,29 @@
 # Changelog
 
+## [26.12.9] – 2026-01-27
+
+### 🔩 Stability & JS Ecosystem Fixes
+
+This release addresses critical interoperability issues within the JS Action Runtime, specifically targeting module resolution and bundling in strict ESM environments.
+
+## ✨ Highlights
+
+### **Fixed ESM Export Mismatch**
+
+A module export mismatch between the bundling system and the core runtime was causing `TypeError: bundle is not a function` during production builds.
+
+*   Changed `bundle.js` from **default export** to **named export** to align with internal tooling expectations.
+*   Updated `titan.js` to use named imports (`import { bundle } from ...`).
+
+### **Strict ESM Compatibility**
+
+Resolved issues with `type: module` enforcement in newer Node.js versions.
+
+*   Added explicit `.js` extensions to all internal relative imports in `titan` core files.
+*   Ensured consistent behavior across both `test-apps` and newly generated projects from templates.
+
+---
+
 ## [26.12.6] – 2026-01-26
 
 ### Stability, Core Runtime Enhancements & Developer-Facing Improvements

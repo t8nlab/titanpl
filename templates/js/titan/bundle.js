@@ -155,7 +155,7 @@ export async function bundleFile(options) {
  * RULE: After printing error box, throws Error("__TITAN_BUNDLE_FAILED__")
  * @returns {Promise<void>}
  */
-export default async function bundle() {
+export async function bundle() {
     const root = process.cwd();
     const actionsDir = path.join(root, 'app', 'actions');
     const bundleDir = path.join(root, 'server', 'actions');

@@ -6,7 +6,7 @@
 
 import fs from "fs";
 import path from "path";
-import bundle from "./bundle.js";
+import { bundle } from "./bundle.js";
 
 const cyan = (t) => `\x1b[36m${t}\x1b[0m`;
 const green = (t) => `\x1b[32m${t}\x1b[0m`;
