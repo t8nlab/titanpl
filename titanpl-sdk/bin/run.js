@@ -13,13 +13,19 @@ const green = (t) => `\x1b[32m${t}\x1b[0m`;
 const red = (t) => `\x1b[31m${t}\x1b[0m`;
 const yellow = (t) => `\x1b[33m${t}\x1b[0m`;
 
-function copyDir(src, dest) {
+function copyDir(src, dest, excludes = []) {
     fs.mkdirSync(dest, { recursive: true });
     for (const file of fs.readdirSync(src)) {
+        if (excludes.includes(file)) continue;
+
         const srcPath = path.join(src, file);
         const destPath = path.join(dest, file);
+
+        // Prevent copying destination into itself (infinite loop protection)
+        if (path.resolve(destPath).startsWith(path.resolve(dest))) continue;
+
         if (fs.lstatSync(srcPath).isDirectory()) {
-            copyDir(srcPath, destPath);
+            copyDir(srcPath, destPath, excludes);
         } else {
             fs.copyFileSync(srcPath, destPath);
         }
@@ -127,7 +133,7 @@ function run() {
     } catch (e) {
         // Fallback to copy if link fails
         // console.log(yellow("Linking failed, copying extension files..."));
-        copyDir(cwd, extDest);
+        copyDir(cwd, extDest, ['.titan_test_run', 'node_modules', '.git', 'target']);
     }
 
     // Create default test files ONLY if they don't exist
