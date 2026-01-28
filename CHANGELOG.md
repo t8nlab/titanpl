@@ -1,5 +1,40 @@
 # Changelog
 
+## [26.13.0] – 2026-01-25
+
+### Minor Stability Release & Drift Syntax Evolution
+
+## ✨ Highlights
+
+### **↪️ The New Drift System**
+This release introduces our revolutionary **Drift** system, a high-performance orchestration engine for asynchronous operations using a **Deterministic Replay-based Suspension** model.
+
+*   **Mechanism**: Drift utilizes a suspension model similar to **Algebraic Effects**. When a `drift()` operation is encountered, the runtime suspends the isolate, offloads the task to the background Tokio executor, and frees the isolate to handle other requests. Upon completion, the code is efficiently **re-played** with the result injected.
+*   **Syntax Evolution**: Migrated from the keyword-style `drift t.fetch(...)` to a standardized functional wrapper `drift(t.fetch(...))`. Our transformer pipeline ensures backward compatibility and optimized native handovers.
+*   **Performance**: Improved concurrency by ensuring isolates are never blocked during I/O operations, leading to significantly higher throughput under heavy load.
+*   **Predictability**: Standardized deterministic execution paths, ensuring that dynamic imports and module caches remain consistent during replay cycles.
+
+### **Internal Polishing & Reliability Fixes**
+Tightened the Gravity worker pipeline and improved developer-facing clarity for actions, extensions, and internal APIs.
+
+## 🚀 Improvements
+
+*   **Standardized Drift**: unified `drift()` function for all async offloading operations.
+*   **Warm-up Optimization**: More consistent isolate warm-up across multi-core systems.
+*   **Log Filtering**: Reduced noisy logs during cold boot and the very first request.
+*   **Manifest Validation**: Improved detection for missing extension manifests during startup.
+*   **Handover Speed**: Slightly faster worker-handover when running large action bundles.
+
+## 🐛 Fixes
+
+*   Resolved a rare issue where `t.db.connect()` would emit a stale connection reference under heavy parallel load.
+*   Fixed misformatted error traces when an action throws during JSON serialization.
+*   Corrected edge-case bug where dynamic imports inside actions were not invalidating the module cache in watch mode.
+*   Addressed occasional double-logging of worker crashes in debug builds.
+*   Fixed minor memory leak involving per-request metadata inside long-lived isolates.
+
+---
+
 ## [26.12.9] – 2026-01-27
 
 ### 🔩 Stability & JS Ecosystem Fixes

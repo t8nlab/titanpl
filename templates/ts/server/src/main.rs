@@ -51,7 +51,9 @@ async fn dynamic_handler_inner(
     // ---------------------------
     let method = req.method().as_str().to_uppercase();
     let path = req.uri().path().to_string();
-    let key = format!("{}:{}", method, path);
+    let strict_key = format!("{}:{}", method, path);
+    // Also try simple path for generic routes
+    // Check strict first, then simple path
 
     // ---------------------------
     // TIMER + LOG META
@@ -101,7 +103,8 @@ async fn dynamic_handler_inner(
     let mut action_name: Option<String> = None;
 
     // Exact route
-    if let Some(route) = state.routes.get(&key) {
+    let route = state.routes.get(&strict_key).or_else(|| state.routes.get(&path));
+    if let Some(route) = route {
         route_kind = "exact";
         if route.r#type == "action" {
             let name = route.value.as_str().unwrap_or("unknown").to_string();
@@ -182,7 +185,8 @@ async fn dynamic_handler_inner(
     // This sends a pointer-sized message through the ring buffer, triggering 
     // the V8 thread to wake up and process the request immediately.
 
-    let result_json = state
+    // Dispatch to the optimized RuntimeManager
+    let (mut result_json, timings) = state
         .runtime
         .execute(
             action_name,
@@ -194,88 +198,153 @@ async fn dynamic_handler_inner(
             query_vec
         )
         .await
-        .unwrap_or_else(|e| serde_json::json!({"error": e}));
+        .unwrap_or_else(|e| (serde_json::json!({"error": e}), vec![]));
 
+    // Construct Server-Timing header
+    let server_timing = timings.iter().enumerate().map(|(i, (name, duration))| {
+        format!("{}_{};dur={:.2}", name, i, duration)
+    }).collect::<Vec<_>>().join(", ");
 
-    // ---------------------------
-    // FINAL LOG
-    // ---------------------------
-    let elapsed = start.elapsed();
+    // Inject timings into JSON if it's an object
+    if let Some(obj) = result_json.as_object_mut() {
+        obj.insert("_titanTimings".to_string(), serde_json::json!(timings));
+    }
 
-    // Check for errors in result
-    if let Some(err) = result_json.get("error") {
+    // Prepare response
+    let mut response = if let Some(err) = result_json.get("error") {
+        let prefix = if !timings.is_empty() { 
+            format!("{} {}", blue("[Titan"), blue("Drift]"))
+        } else {
+            blue("[Titan]").to_string()
+        };
+
         println!(
             "{} {} {} {}",
-            blue("[Titan]"),
+            prefix,
             red(&format!("{} {}", method, path)), 
             red("→ error"),
-            gray(&format!("in {:.2?}", elapsed))
+            gray(&format!("in {:.2?}", start.elapsed()))
         );
          println!(
             "{} {} {} {}",
-            blue("[Titan]"),
+            prefix,
             red("Action Error:"),
             red(err.as_str().unwrap_or("Unknown")),
-            gray(&format!("in {:.2?}", elapsed))
+            gray(&format!("in {:.2?}", start.elapsed()))
         );
-        return (StatusCode::INTERNAL_SERVER_ERROR, Json(result_json)).into_response();
+        (StatusCode::INTERNAL_SERVER_ERROR, Json(result_json.clone())).into_response()
+    } else if let Some(is_resp) = result_json.get("_isResponse") {
+        if is_resp.as_bool().unwrap_or(false) {
+            let status_u16 = match result_json.get("status") {
+                Some(Value::Number(n)) => {
+                    if let Some(u) = n.as_u64() {
+                        u as u16
+                    } else if let Some(f) = n.as_f64() {
+                        f as u16
+                    } else {
+                        200
+                    }
+                }
+                _ => 200,
+            };
+
+            let status = StatusCode::from_u16(status_u16).unwrap_or(StatusCode::OK);
+            let mut builder = axum::http::Response::builder().status(status);
+
+            if let Some(hmap) = result_json.get("headers").and_then(|v| v.as_object()) {
+                for (k, v) in hmap {
+                    if let Some(vs) = v.as_str() {
+                        builder = builder.header(k, vs);
+                    }
+                }
+            }
+
+            let mut is_redirect = false;
+            
+            if let Some(location) = result_json.get("redirect") {
+                if let Some(url) = location.as_str() {
+                    let mut final_status_u16 = status.as_u16();
+                    // If it's a redirect call, ensure we use a 3xx status
+                    if final_status_u16 < 300 || final_status_u16 > 399 {
+                        final_status_u16 = 302; // Default to 302 Found
+                    }
+                    
+                    builder = builder.status(StatusCode::from_u16(final_status_u16).unwrap_or(StatusCode::FOUND))
+                                     .header("Location", url);
+                    is_redirect = true;
+                }
+            }
+
+            let body_text = if is_redirect {
+                "".to_string()
+            } else {
+                match result_json.get("body") {
+                    Some(Value::String(s)) => s.clone(),
+                    Some(v) => v.to_string(),
+                    None => "".to_string(),
+                }
+            };
+
+            builder.body(Body::from(body_text)).unwrap()
+        } else {
+            Json(result_json.clone()).into_response()
+        }
+    } else {
+        Json(result_json.clone()).into_response()
+    };
+
+    // Add Server-Timing Header
+    if !server_timing.is_empty() {
+        response.headers_mut().insert("Server-Timing", server_timing.parse().unwrap());
     }
+
+    // ---------------------------
+    // FINAL LOG (SUCCESS)
+    // ---------------------------
+    let total_elapsed = start.elapsed();
+    let total_elapsed_ms = total_elapsed.as_secs_f64() * 1000.0;
+    
+    let total_drift_ms: f64 = timings.iter()
+        .filter(|(n, _)| n == "drift" || n == "drift_error")
+        .map(|(_, d)| d)
+        .sum();
+    
+    let compute_ms = (total_elapsed_ms - total_drift_ms).max(0.0);
+
+    let prefix = if !timings.is_empty() { 
+        format!("{} {}", blue("[Titan"), blue("Drift]"))
+    } else {
+        blue("[Titan]").to_string()
+    };
+
+    let timing_info = if !timings.is_empty() {
+        gray(&format!("(active: {:.2}ms, drift: {:.2}ms) in {:.2?}", compute_ms, total_drift_ms, total_elapsed))
+    } else {
+        gray(&format!("in {:.2?}", total_elapsed))
+    };
 
     match route_kind {
         "dynamic" => println!(
             "{} {} {} {} {} {}",
-            blue("[Titan]"),
+            prefix,
             green(&format!("{} {}", method, path)),
             white("→"),
             green(&route_label),
             white("(dynamic)"),
-            gray(&format!("in {:.2?}", elapsed))
+            timing_info
         ),
         "exact" => println!(
             "{} {} {} {} {}",
-            blue("[Titan]"),
+            prefix,
             white(&format!("{} {}", method, path)),
             white("→"),
             yellow(&route_label),
-            gray(&format!("in {:.2?}", elapsed))
+            timing_info
         ),
         _ => {}
     }
 
-    // --------------------------------------------------------------
-// Titan Response Contract: Custom HTTP Handling
-// --------------------------------------------------------------
-if let Some(is_resp) = result_json.get("_isResponse") {
-    if is_resp.as_bool().unwrap_or(false) {
-        let status = result_json
-            .get("status")
-            .and_then(|v| v.as_u64())
-            .unwrap_or(200) as u16;
-
-        let status = StatusCode::from_u16(status).unwrap_or(StatusCode::OK);
-
-        let mut builder = axum::http::Response::builder().status(status);
-
-        if let Some(hmap) = result_json.get("headers").and_then(|v| v.as_object()) {
-            for (k, v) in hmap {
-                if let Some(vs) = v.as_str() {
-                    builder = builder.header(k, vs);
-                }
-            }
-        }
-
-        // FIX: Safe body conversion
-        let body_text = match result_json.get("body") {
-            Some(Value::String(s)) => s.clone(),
-            Some(v) => v.to_string(),
-            None => "".to_string(),
-        };
-
-        return builder.body(Body::from(body_text)).unwrap();
-    }
-}
-
-    Json(result_json).into_response()
+    response
 }
 
 
@@ -284,7 +353,7 @@ if let Some(is_resp) = result_json.get("_isResponse") {
 #[tokio::main]
 async fn main() -> Result<()> {
     dotenvy::dotenv().ok();
-
+    
     // Load routes.json
     let raw = fs::read_to_string("./routes.json").unwrap_or_else(|_| "{}".to_string());
     let json: Value = serde_json::from_str(&raw).unwrap_or_default();

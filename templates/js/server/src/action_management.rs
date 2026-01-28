@@ -8,6 +8,7 @@ use serde_json::Value;
 #[derive(Debug, Deserialize, Clone)]
 pub struct RouteVal {
     pub r#type: String,
+    #[serde(alias = "target")]
     pub value: Value,
 }
 

@@ -21,6 +21,7 @@ use v8;
 // ----------------------------------------------------------------------------
 
 pub static SHARE_CONTEXT: OnceLock<ShareContextStore> = OnceLock::new();
+pub static PROJECT_ROOT: OnceLock<PathBuf> = OnceLock::new();
 
 pub struct ShareContextStore {
     pub kv: DashMap<String, serde_json::Value>,
@@ -40,17 +41,79 @@ impl ShareContextStore {
 }
 
 // Re-exports for easier access
-pub use external::load_project_extensions;
+pub fn load_project_extensions(root: PathBuf) {
+    PROJECT_ROOT.get_or_init(|| root.clone());
+    external::load_project_extensions(root);
+}
 
 // ----------------------------------------------------------------------------
 // TITAN RUNTIME
 // ----------------------------------------------------------------------------
 
+pub enum TitanAsyncOp {
+    Fetch {
+        url: String,
+        method: String,
+        body: Option<String>,
+        headers: Vec<(String, String)>,
+    },
+    DbQuery {
+        conn: String,
+        query: String,
+    },
+    FsRead {
+        path: String,
+    },
+    Batch(Vec<TitanAsyncOp>),
+}
+
+pub struct WorkerAsyncResult {
+    pub drift_id: u32,
+    pub result: serde_json::Value,
+    pub duration_ms: f64,
+}
+
+pub struct AsyncOpRequest {
+    pub op: TitanAsyncOp,
+    pub drift_id: u32,
+    pub request_id: u32,
+    pub op_type: String,
+    pub respond_tx: tokio::sync::oneshot::Sender<WorkerAsyncResult>,
+}
+
 pub struct TitanRuntime {
+    pub id: usize,
     pub isolate: v8::OwnedIsolate,
     pub context: v8::Global<v8::Context>,
     pub actions: HashMap<String, v8::Global<v8::Function>>,
     pub worker_tx: crossbeam::channel::Sender<crate::runtime::WorkerCommand>,
+    
+    // Async State
+    pub async_rx: crossbeam::channel::Receiver<WorkerAsyncResult>,
+    pub async_tx: crossbeam::channel::Sender<WorkerAsyncResult>,
+    pub pending_drifts: HashMap<u32, v8::Global<v8::PromiseResolver>>,
+    pub pending_requests: HashMap<u32, tokio::sync::oneshot::Sender<crate::runtime::WorkerResult>>,
+    pub drift_counter: u32,
+    pub request_counter: u32,
+    
+    pub tokio_handle: tokio::runtime::Handle,
+    pub global_async_tx: tokio::sync::mpsc::Sender<AsyncOpRequest>,
+    pub request_timings: HashMap<u32, Vec<(String, f64)>>,
+    pub drift_to_request: HashMap<u32, u32>,
+    pub completed_drifts: HashMap<u32, serde_json::Value>,
+    pub active_requests: HashMap<u32, RequestData>,
+    pub request_start_counters: HashMap<u32, u32>,
+}
+
+#[derive(Clone)]
+pub struct RequestData {
+    pub action_name: String,
+    pub body: Option<Bytes>,
+    pub method: String,
+    pub path: String,
+    pub headers: Vec<(String, String)>,
+    pub params: Vec<(String, String)>,
+    pub query: Vec<(String, String)>,
 }
 
 unsafe impl Send for TitanRuntime {}
@@ -67,8 +130,11 @@ pub fn init_v8() {
 }
 
 pub fn init_runtime_worker(
+    id: usize,
     root: PathBuf,
     worker_tx: crossbeam::channel::Sender<crate::runtime::WorkerCommand>,
+    tokio_handle: tokio::runtime::Handle,
+    global_async_tx: tokio::sync::mpsc::Sender<AsyncOpRequest>,
 ) -> TitanRuntime {
     init_v8();
 
@@ -116,11 +182,27 @@ pub fn init_runtime_worker(
         (v8::Global::new(scope, context), map)
     };
 
+    let (async_tx, async_rx) = crossbeam::channel::unbounded();
+
     TitanRuntime {
+        id,
         isolate,
         context: global_context,
         actions: actions_map,
         worker_tx,
+        async_rx,
+        async_tx,
+        pending_drifts: HashMap::new(),
+        pending_requests: HashMap::new(),
+        drift_counter: 0,
+        request_counter: 0,
+        tokio_handle,
+        global_async_tx,
+        request_timings: HashMap::new(),
+        drift_to_request: HashMap::new(),
+        completed_drifts: HashMap::new(),
+        active_requests: HashMap::new(),
+        request_start_counters: HashMap::new(),
     }
 }
 
@@ -142,7 +224,7 @@ pub fn inject_extensions(scope: &mut v8::HandleScope, global: v8::Local<v8::Obje
     global.set(scope, t_key.into(), t_obj.into());
 }
 
-fn v8_to_json<'s>(
+pub fn v8_to_json<'s>(
     scope: &mut v8::HandleScope<'s>,
     value: v8::Local<v8::Value>,
 ) -> serde_json::Value {
@@ -221,6 +303,7 @@ fn v8_to_json<'s>(
 
 pub fn execute_action_optimized(
     runtime: &mut TitanRuntime,
+    request_id: u32,
     action_name: &str,
     req_body: Option<bytes::Bytes>,
     req_method: &str,
@@ -228,18 +311,20 @@ pub fn execute_action_optimized(
     headers: &[(String, String)],
     params: &[(String, String)],
     query: &[(String, String)],
-) -> serde_json::Value {
-    let TitanRuntime {
-        isolate,
-        context: global_context,
-        actions: actions_map,
-        ..
-    } = runtime;
+) {
+    let context_global = runtime.context.clone();
+    let actions_map = runtime.actions.clone(); // Clone the map of globals (cheap)
+    let isolate = &mut runtime.isolate;
+    
     let handle_scope = &mut v8::HandleScope::new(isolate);
-    let context = v8::Local::new(handle_scope, &*global_context);
+    let context = v8::Local::new(handle_scope, context_global);
     let scope = &mut v8::ContextScope::new(handle_scope, context);
 
     let req_obj = v8::Object::new(scope);
+
+    let req_id_key = v8_str(scope, "__titan_request_id");
+    let req_id_val = v8::Integer::new(scope, request_id as i32);
+    req_obj.set(scope, req_id_key.into(), req_id_val.into());
 
     let m_key = v8_str(scope, "method");
     let m_val = v8_str(scope, req_method);
@@ -298,17 +383,36 @@ pub fn execute_action_optimized(
         global.set(scope, tr_act_key.into(), tr_act_val.into());
         let try_catch = &mut v8::TryCatch::new(scope);
 
-        if let Some(result) = action_fn.call(try_catch, global.into(), &[req_obj.into()]) {
-            return v8_to_json(try_catch, result);
+        if let Some(_) = action_fn.call(try_catch, global.into(), &[req_obj.into()]) {
+            // JS side is responsible for calling t._finish_request(requestId, result)
+            // Even if the action is NOT async, our JS wrapper in titan_core.js will handle it.
+            return;
         }
 
         let msg = try_catch
             .message()
             .map(|m| m.get(try_catch).to_rust_string_lossy(try_catch))
             .unwrap_or("Unknown error".to_string());
-        return serde_json::json!({"error": msg});
+        
+        // Check for suspension
+        if msg.contains("SUSPEND") {
+            return;
+        }
+
+        if let Some(tx) = runtime.pending_requests.remove(&request_id) {
+             let _ = tx.send(crate::runtime::WorkerResult { 
+                 json: serde_json::json!({"error": msg}),
+                 timings: vec![]
+             });
+        }
+    } else {
+        if let Some(tx) = runtime.pending_requests.remove(&request_id) {
+             let _ = tx.send(crate::runtime::WorkerResult { 
+                 json: serde_json::json!({"error": format!("Action '{}' not found", action_name)}),
+                 timings: vec![]
+             });
+        }
     }
-    serde_json::json!({"error": format!("Action '{}' not found", action_name)})
 }
 
 pub fn v8_str<'s>(scope: &mut v8::HandleScope<'s>, s: &str) -> v8::Local<'s, v8::String> {

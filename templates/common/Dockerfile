@@ -61,6 +61,6 @@ COPY --from=builder /app/server/actions /app/actions
 # Copy only Titan extensions
 COPY --from=builder /app/.ext ./.ext
 
-EXPOSE 3000
+EXPOSE 5100
 
 CMD ["./titan-server"]
