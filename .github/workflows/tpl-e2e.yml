@@ -10,7 +10,7 @@ permissions:
   contents: write
 
 jobs:
-  titan:
+  titanpl:
     runs-on: ubuntu-latest
 
     steps:
@@ -93,8 +93,8 @@ jobs:
               } catch { result.failed.push("password"); }
 
               try {
-                const d = drift Promise.resolve(5);
-                result.tests.drift = d === 5;
+                const resp = drift(t.fetch("http://127.0.0.1:5100/"));
+                result.tests.drift = resp && resp.status === 200;
               } catch { result.failed.push("drift"); }
 
               try {
@@ -139,36 +139,49 @@ jobs:
 
       # ---------------- DEV TEST ----------------
       - name: Dev Run
+        continue-on-error: true
         run: |
           cd demo
           titan dev &
           sleep 12
-          curl -f http://localhost:5100/h > ../dev.json
+          curl -f http://127.0.0.1:5100/h > ../dev.json || echo '{"ok":false,"stage":"dev"}' > ../dev.json
           kill $(lsof -t -i:5100) || true
 
       # ---------------- BUILD ----------------
       - name: Production Build
+        continue-on-error: true
         run: |
           cd demo
-          titan build
+          titan build || true
 
       # ---------------- DOCKER ----------------
       - name: Docker Build
+        continue-on-error: true
         run: |
           cd demo
-          docker build -t titanpl-test .
+          docker build -t titanpl-test . || true
 
       - name: Docker Run
+        continue-on-error: true
         run: |
-          docker run -d -p 5100:5100 --name titanpl-run titanpl-test
+          docker run -d -p 5100:5100 --name titanpl-run titanpl-test || true
           sleep 10
-          curl -f http://localhost:5100/h > prod.json
+          curl -f http://127.0.0.1:5100/h > prod.json || echo '{"ok":false,"stage":"prod"}' > prod.json
 
       - name: Stop Container
+        if: always()
         run: docker stop titanpl-run || true
+
+      # ---------------- ENSURE JSON EXISTS ----------------
+      - name: Ensure JSON Files
+        if: always()
+        run: |
+          [ -f dev.json ] || echo '{"ok":false,"stage":"dev-missing"}' > dev.json
+          [ -f prod.json ] || echo '{"ok":false,"stage":"prod-missing"}' > prod.json
 
       # ---------------- PREPARE STATUS LOG ----------------
       - name: Prepare Status File
+        if: always()
         run: |
           DATE=$(date +%Y-%m-%d_%H-%M-%S)
           COMMIT=$(git rev-parse --short HEAD)
@@ -188,6 +201,7 @@ jobs:
 
       # ---------------- COMMIT STATUS ----------------
       - name: Commit Status Logs
+        if: always()
         run: |
           git config user.name "TitanPl CI"
           git config user.email "ci@titan.local"
@@ -199,3 +213,9 @@ jobs:
           else
             echo "No status changes"
           fi
+
+      # ---------------- FINAL FAIL CHECK ----------------
+      - name: Final Health Check
+        if: always()
+        run: |
+          grep '"ok":false' dev.json prod.json && exit 1 || exit 0
