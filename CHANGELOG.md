@@ -1,5 +1,80 @@
 # Changelog
 
+## [26.13.3] – 2026-01-30
+
+## 🛠 Fixes
+
+### **Action Discovery & Registration**
+
+Resolved **“Action hello not found”** errors in Dev Mode.
+
+* Enforced usage of the global `defineAction` wrapper in the bundler to correctly manage the request lifecycle.
+* Synchronized the bundler’s source directory with the project structure (`app/src/actions`).
+
+### **Dev Mode Stability**
+
+* Fixed a race condition where `titan dev` could leave **ghost server processes**, leading to port binding failures.
+
+### **Template Fallback**
+
+* Improved action template loading to support both:
+
+  * Local paths → `./static/...`
+  * Docker paths → `./app/static/...`
+
+---
+
+## [26.13.2] – 2026-01-30
+
+## 🐛 Fixes
+
+### **Native Extension Segfault**
+
+Resolved a critical crash (**Exit 139**) during asynchronous `drift()` calls.
+
+* Correctly bound the `TitanRuntime` pointer to **V8 isolate data slot 0**.
+* Enabled safe runtime access for native extensions.
+
+### **HTTPS Support in Docker**
+
+* Added `ca-certificates` to the production Docker image.
+* Fixed `t.fetch` failures caused by missing root certificates in minimal Debian images.
+
+### **Port Mapping**
+
+* Corrected `Dockerfile` to expose **port `5100`** instead of the incorrect `3000`.
+
+---
+
+## ✨ Added
+
+### **Production-Ready Docker Environment**
+
+* Switched to `debian:stable-slim` for smaller and faster images.
+* Optimized multi-stage builds to reduce final image size.
+
+### **V8 Isolate Data Binding**
+
+* Introduced `TitanRuntime::bind_to_isolate()` for safe Rust ↔ V8 extension communication.
+
+---
+
+## ⚡ Optimized
+
+### **Dockerfile Build Performance**
+
+* Merged redundant `RUN` instructions.
+* Removed excessive debug logs during extension extraction for cleaner deploy output.
+
+### **Debug Artifact Cleanup**
+
+* Removed `println!` debug traces.
+* Deleted temporary action test files such as `dtest.js`.
+
+---
+
+
+
 ## [26.13.1] – 2026-01-28
 
 ### Critical Bundling Fix & Action Wrapping

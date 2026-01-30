@@ -51,7 +51,9 @@ async fn dynamic_handler_inner(
     // ---------------------------
     let method = req.method().as_str().to_uppercase();
     let path = req.uri().path().to_string();
-    let key = format!("{}:{}", method, path);
+    let strict_key = format!("{}:{}", method, path);
+    // Also try simple path for generic routes
+    // Check strict first, then simple path
 
     // ---------------------------
     // TIMER + LOG META
@@ -101,7 +103,8 @@ async fn dynamic_handler_inner(
     let mut action_name: Option<String> = None;
 
     // Exact route
-    if let Some(route) = state.routes.get(&key) {
+    let route = state.routes.get(&strict_key).or_else(|| state.routes.get(&path));
+    if let Some(route) = route {
         route_kind = "exact";
         if route.r#type == "action" {
             let name = route.value.as_str().unwrap_or("unknown").to_string();
@@ -182,7 +185,8 @@ async fn dynamic_handler_inner(
     // This sends a pointer-sized message through the ring buffer, triggering 
     // the V8 thread to wake up and process the request immediately.
 
-    let result_json = state
+    // Dispatch to the worker pool for V8 execution
+    let (mut result_json, timings) = state
         .runtime
         .execute(
             action_name,
@@ -194,88 +198,118 @@ async fn dynamic_handler_inner(
             query_vec
         )
         .await
-        .unwrap_or_else(|e| serde_json::json!({"error": e}));
+        .unwrap_or_else(|e| {
+            // Log catastrophic runtime errors
+            (serde_json::json!({"error": e}), vec![])
+        });
 
+    // Construct Server-Timing header
+    let server_timing = timings.iter().enumerate().map(|(i, (name, duration))| {
+        format!("{}_{};dur={:.2}", name, i, duration)
+    }).collect::<Vec<_>>().join(", ");
+
+    // Inject timings into JSON if it's an object
+    if let Some(obj) = result_json.as_object_mut() {
+        obj.insert("_titanTimings".to_string(), serde_json::json!(timings));
+    }
+
+    let prefix = if !timings.is_empty() { 
+        format!("{} {}", blue("[Titan"), blue("Drift]"))
+    } else {
+        blue("[Titan]").to_string()
+    };
 
     // ---------------------------
-    // FINAL LOG
+    // ERROR HANDLING
     // ---------------------------
-    let elapsed = start.elapsed();
-
-    // Check for errors in result
     if let Some(err) = result_json.get("error") {
         println!(
             "{} {} {} {}",
-            blue("[Titan]"),
+            prefix,
             red(&format!("{} {}", method, path)), 
             red("→ error"),
-            gray(&format!("in {:.2?}", elapsed))
+            gray(&format!("in {:.2?}", start.elapsed()))
         );
-         println!(
-            "{} {} {} {}",
-            blue("[Titan]"),
+        println!(
+            "{} {} {}",
+            prefix,
             red("Action Error:"),
-            red(err.as_str().unwrap_or("Unknown")),
-            gray(&format!("in {:.2?}", elapsed))
+            red(err.as_str().unwrap_or("Unknown"))
         );
-        return (StatusCode::INTERNAL_SERVER_ERROR, Json(result_json)).into_response();
+        let mut response = (StatusCode::INTERNAL_SERVER_ERROR, Json(result_json.clone())).into_response();
+        if !server_timing.is_empty() {
+            response.headers_mut().insert("Server-Timing", server_timing.parse().unwrap());
+        }
+        return response;
     }
 
+    // ---------------------------
+    // RESPONSE CONSTRUCTION
+    // ---------------------------
+    let mut response = if let Some(is_resp) = result_json.get("_isResponse") {
+        if is_resp.as_bool().unwrap_or(false) {
+            let status_u16 = result_json.get("status").and_then(|v| v.as_u64()).unwrap_or(200) as u16;
+            let status = StatusCode::from_u16(status_u16).unwrap_or(StatusCode::OK);
+            let mut builder = axum::http::Response::builder().status(status);
+
+            if let Some(hmap) = result_json.get("headers").and_then(|v| v.as_object()) {
+                for (k, v) in hmap {
+                    if let Some(vs) = v.as_str() {
+                        builder = builder.header(k, vs);
+                    }
+                }
+            }
+
+            let mut is_redirect = false;
+            if let Some(location) = result_json.get("redirect") {
+                if let Some(url) = location.as_str() {
+                    let mut final_status_u16 = status.as_u16();
+                    if final_status_u16 < 300 || final_status_u16 > 399 { final_status_u16 = 302; }
+                    builder = builder.status(StatusCode::from_u16(final_status_u16).unwrap_or(StatusCode::FOUND)).header("Location", url);
+                    is_redirect = true;
+                }
+            }
+
+            let body_text = if is_redirect { "".to_string() } else {
+                match result_json.get("body") {
+                    Some(Value::String(s)) => s.clone(),
+                    Some(v) => v.to_string(),
+                    None => "".to_string(),
+                }
+            };
+            builder.body(Body::from(body_text)).unwrap()
+        } else {
+            Json(result_json.clone()).into_response()
+        }
+    } else {
+        Json(result_json.clone()).into_response()
+    };
+
+    if !server_timing.is_empty() {
+        response.headers_mut().insert("Server-Timing", server_timing.parse().unwrap());
+    }
+
+    // ---------------------------
+    // FINAL LOG (SUCCESS)
+    // ---------------------------
+    let total_elapsed = start.elapsed();
+    let total_elapsed_ms = total_elapsed.as_secs_f64() * 1000.0;
+    let total_drift_ms: f64 = timings.iter().filter(|(n, _)| n == "drift" || n == "drift_error").map(|(_, d)| d).sum();
+    let compute_ms = (total_elapsed_ms - total_drift_ms).max(0.0);
+
+    let timing_info = if !timings.is_empty() {
+        gray(&format!("(active: {:.2}ms, drift: {:.2}ms) in {:.2?}", compute_ms, total_drift_ms, total_elapsed))
+    } else {
+        gray(&format!("in {:.2?}", total_elapsed))
+    };
+
     match route_kind {
-        "dynamic" => println!(
-            "{} {} {} {} {} {}",
-            blue("[Titan]"),
-            green(&format!("{} {}", method, path)),
-            white("→"),
-            green(&route_label),
-            white("(dynamic)"),
-            gray(&format!("in {:.2?}", elapsed))
-        ),
-        "exact" => println!(
-            "{} {} {} {} {}",
-            blue("[Titan]"),
-            white(&format!("{} {}", method, path)),
-            white("→"),
-            yellow(&route_label),
-            gray(&format!("in {:.2?}", elapsed))
-        ),
+        "dynamic" => println!("{} {} {} {} {} {}", prefix, green(&format!("{} {}", method, path)), white("→"), green(&route_label), white("(dynamic)"), timing_info),
+        "exact" => println!("{} {} {} {} {}", prefix, white(&format!("{} {}", method, path)), white("→"), yellow(&route_label), timing_info),
         _ => {}
     }
 
-    // --------------------------------------------------------------
-// Titan Response Contract: Custom HTTP Handling
-// --------------------------------------------------------------
-if let Some(is_resp) = result_json.get("_isResponse") {
-    if is_resp.as_bool().unwrap_or(false) {
-        let status = result_json
-            .get("status")
-            .and_then(|v| v.as_u64())
-            .unwrap_or(200) as u16;
-
-        let status = StatusCode::from_u16(status).unwrap_or(StatusCode::OK);
-
-        let mut builder = axum::http::Response::builder().status(status);
-
-        if let Some(hmap) = result_json.get("headers").and_then(|v| v.as_object()) {
-            for (k, v) in hmap {
-                if let Some(vs) = v.as_str() {
-                    builder = builder.header(k, vs);
-                }
-            }
-        }
-
-        // FIX: Safe body conversion
-        let body_text = match result_json.get("body") {
-            Some(Value::String(s)) => s.clone(),
-            Some(v) => v.to_string(),
-            None => "".to_string(),
-        };
-
-        return builder.body(Body::from(body_text)).unwrap();
-    }
-}
-
-    Json(result_json).into_response()
+    response
 }
 
 
@@ -284,23 +318,28 @@ if let Some(is_resp) = result_json.get("_isResponse") {
 #[tokio::main]
 async fn main() -> Result<()> {
     dotenvy::dotenv().ok();
-
+    
     // Load routes.json
     let raw = fs::read_to_string("./routes.json").unwrap_or_else(|_| "{}".to_string());
     let json: Value = serde_json::from_str(&raw).unwrap_or_default();
 
-    let port = json["__config"]["port"].as_u64().unwrap_or(3000);
+    let port = std::env::var("PORT")
+        .ok()
+        .and_then(|p| p.parse::<u64>().ok())
+        .or_else(|| json["__config"]["port"].as_u64())
+        .unwrap_or(3000);
     let thread_count = json["__config"]["threads"].as_u64();
     let routes_json = json["routes"].clone();
     let map: HashMap<String, RouteVal> = serde_json::from_value(routes_json).unwrap_or_default();
     let dynamic_routes: Vec<DynamicRoute> =
         serde_json::from_value(json["__dynamic_routes"].clone()).unwrap_or_default();
 
-    // Identify project root (where .ext or node_modules lives)
+    // Identify project root
     let project_root = resolve_project_root();
-
-    // Load extensions (Load definitions globally)
+    
+    // Load extensions and action definitions
     extensions::load_project_extensions(project_root.clone());
+
     
     // Initialize Runtime Manager (Worker Pool)
     let threads = match thread_count {
@@ -308,8 +347,10 @@ async fn main() -> Result<()> {
         _ => num_cpus::get() * 4,   // default
     };
 
+    let stack_mb = json["__config"]["stack_mb"].as_u64().unwrap_or(8);
+    let stack_size = (stack_mb as usize) * 1024 * 1024;
     
-    let runtime_manager = Arc::new(RuntimeManager::new(project_root.clone(), threads));
+    let runtime_manager = Arc::new(RuntimeManager::new(project_root.clone(), threads, stack_size));
 
     let state = AppState {
         routes: Arc::new(map),
@@ -326,9 +367,10 @@ async fn main() -> Result<()> {
 
     
     println!(
-        "\x1b[38;5;39mTitan server running at:\x1b[0m http://localhost:{}  \x1b[90m(Threads: {})\x1b[0m",
+        "\x1b[38;5;39mTitan server running at:\x1b[0m http://localhost:{}  \x1b[90m(Threads: {}, Stack: {}MB)\x1b[0m",
         port,
-        threads
+        threads,
+        stack_mb
     );
     
 

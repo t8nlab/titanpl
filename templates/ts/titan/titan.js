@@ -77,6 +77,7 @@ const t = {
      * Start the Titan Server
      * @param {number} [port=3000] 
      * @param {string} [msg=""] 
+     * @param {number} [threads] 
      */
     async start(port = 3000, msg = "", threads) {
         try {

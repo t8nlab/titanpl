@@ -1,3 +1,39 @@
 node_modules
 npm-debug.log
 .git
+.gitignore
+
+package-lock.json
+yarn.lock
+
+# Titan Runtime (Auto-generated - DO NOT COMMIT)
+titan/server-bin*
+.titan/
+server/routes.json
+server/action_map.json
+server/actions/
+server/titan/
+server/src/actions_rust/
+deploy/
+
+# Rust Build Artifacts
+server/target/
+Cargo.lock
+
+# OS Files
+.DS_Store
+Thumbs.db
+*.tmp
+*.bak
+
+# Environment & Secrets
+.env
+.env.local
+.env.*.local
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+

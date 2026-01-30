@@ -107,13 +107,13 @@ export function help() {
     console.log(`
  ${bold(cyan("Titan Planet"))}  v${TITAN_VERSION}
 
- ${green("titan init <project> [-t <template>]")}   Create new Titan project
- ${green("titan create ext <name>")} Create new Titan extension
- ${green("titan dev [-cc]")}        Dev mode (hot reload) [-cc to backward clean]
+ ${green("titan init <project> [-t <template>]")}   Create new TitanPl project
+ ${green("titan create ext <name>")} Create new TitanPl extension
+ ${green("titan dev [-c]")}        Dev mode (hot reload) [-c to backward clean]
  ${green("titan build")}            Build production Rust server
  ${green("titan start")}            Start production binary
- ${green("titan update")}           Update Titan engine
- ${green("titan --version")}        Show Titan CLI version
+ ${green("titan update")}           Update TitanPl Framework
+ ${green("titan --version")}        Show TitanPl CLI version
 
  ${yellow("Note: `tit` is supported as a legacy alias.")}
 `);
@@ -484,6 +484,8 @@ export function updateTitan() {
     }
 
     const templatesRoot = path.join(__dirname, "templates", templateType);
+    const commonRoot = path.join(__dirname, "templates", "common");
+
     const templateTitan = path.join(templatesRoot, "titan");
     const templateServer = path.join(templatesRoot, "server");
 
@@ -553,11 +555,17 @@ export function updateTitan() {
         "_gitignore": ".gitignore",
         "_dockerignore": ".dockerignore",
         "Dockerfile": "Dockerfile",
-        "jsconfig.json": "jsconfig.json"
+        "jsconfig.json": "jsconfig.json",
+        "tsconfig.json": "tsconfig.json",
+        "eslint.config.js": "eslint.config.js"
     };
 
     for (const [srcName, destName] of Object.entries(rootFiles)) {
-        const src = path.join(templatesRoot, srcName);
+        let src = path.join(templatesRoot, srcName);
+        if (!fs.existsSync(src)) {
+            src = path.join(commonRoot, srcName);
+        }
+
         const dest = path.join(root, destName);
 
         if (fs.existsSync(src)) {
@@ -568,9 +576,10 @@ export function updateTitan() {
 
     // app/titan.d.ts (JS typing contract)
     const appDir = path.join(root, "app");
-    const srcDts = path.join(templateServer, "../app/titan.d.ts");
-    const fallbackDts = path.join(templatesRoot, "app", "titan.d.ts");
-    const finalDtsSrc = fs.existsSync(srcDts) ? srcDts : (fs.existsSync(fallbackDts) ? fallbackDts : null);
+    const templatesDts = path.join(templatesRoot, "app", "titan.d.ts");
+    const commonDts = path.join(commonRoot, "app", "titan.d.ts");
+
+    const finalDtsSrc = fs.existsSync(templatesDts) ? templatesDts : (fs.existsSync(commonDts) ? commonDts : null);
     const destDts = path.join(appDir, "titan.d.ts");
 
     if (finalDtsSrc) {

@@ -1,0 +1,201 @@
+name: TitanPl Development and Production Env Testing
+
+on:
+  push:
+    branches: [ main ]
+    paths-ignore:
+      - 'status/**'
+
+permissions:
+  contents: write
+
+jobs:
+  titan:
+    runs-on: ubuntu-latest
+
+    steps:
+      # ---------------- CHECKOUT ----------------
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # ---------------- SETUP ----------------
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install jq
+        run: sudo apt-get update && sudo apt-get install -y jq
+
+      - name: Install Titan CLI
+        run: npm install -g @ezetgalaxy/titan
+
+      # ---------------- INIT PROJECT ----------------
+      - name: Init TitanPl Project
+        run: tit init demo
+
+      # ---------------- HEALTH ACTION ----------------
+      - name: Add Health Action
+        run: |
+          mkdir -p demo/app/actions
+          cat <<'EOF' > demo/app/actions/health.js
+          export default defineAction((req) => {
+            const result = {
+              ok: true,
+              timestamp: t.time.timestamp(),
+              env: {},
+              runtime: {},
+              tests: {},
+              warnings: [],
+              failed: []
+            };
+
+            try {
+              result.env = {
+                platform: t.os.platform(),
+                cpus: t.os.cpus(),
+                memTotal: t.os.totalMemory(),
+                memFree: t.os.freeMemory(),
+                pid: t.proc.pid(),
+                uptime: t.proc.uptime(),
+                dev: !!t.fs.exists(".titan")
+              };
+
+              try {
+                t.fs.writeFile("health.tmp", "ok");
+                const r = t.fs.readFile("health.tmp");
+                t.fs.remove("health.tmp");
+                result.tests.fs = r === "ok";
+              } catch { result.failed.push("fs"); }
+
+              try {
+                const h = t.crypto.hash("sha256", "titan");
+                result.tests.crypto = !!h;
+              } catch { result.failed.push("crypto"); }
+
+              try {
+                const b = t.buffer.toBase64("hello");
+                result.tests.buffer = b.length > 0;
+              } catch { result.failed.push("buffer"); }
+
+              try {
+                const token = t.jwt.sign({ a: 1 }, "x");
+                const v = t.jwt.verify(token, "x");
+                result.tests.jwt = !!v;
+              } catch { result.failed.push("jwt"); }
+
+              try {
+                const hash = t.password.hash("123");
+                result.tests.password = t.password.verify("123", hash);
+              } catch { result.failed.push("password"); }
+
+              try {
+                const d = drift Promise.resolve(5);
+                result.tests.drift = d === 5;
+              } catch { result.failed.push("drift"); }
+
+              try {
+                result.tests.net = t.net.ip().length > 0;
+              } catch { result.failed.push("net"); }
+
+              try {
+                t.ls.set("h", "1");
+                result.tests.ls = t.ls.get("h") === "1";
+              } catch { result.failed.push("localStorage"); }
+
+              try {
+                const r = t.response.json({ ok: true });
+                result.tests.response = !!r;
+              } catch { result.failed.push("response"); }
+
+              result.runtime = {
+                pid: t.proc.pid(),
+                uptime: t.proc.uptime(),
+                memory: t.proc.memory()
+              };
+
+            } catch (err) {
+              result.ok = false;
+              result.warnings.push(String(err));
+            }
+
+            if (result.failed.length > 0) result.ok = false;
+            return result;
+          });
+          EOF
+
+      # ---------------- APP.JS ----------------
+      - name: Update routes from app.js
+        run: |
+          cat <<EOF > demo/app/app.js
+          import t from "../titan/titan.js";
+          t.get("/").reply("ok");
+          t.get("/h").action("health");
+          t.start(5100);
+          EOF
+
+      # ---------------- DEV TEST ----------------
+      - name: Dev Run
+        run: |
+          cd demo
+          tit dev &
+          sleep 12
+          curl -f http://localhost:5100/h > ../dev.json
+          kill $(lsof -t -i:5100) || true
+
+      # ---------------- BUILD ----------------
+      - name: Production Build
+        run: |
+          cd demo
+          tit build
+
+      # ---------------- DOCKER ----------------
+      - name: Docker Build
+        run: |
+          cd demo
+          docker build -t titanpl-test .
+
+      - name: Docker Run
+        run: |
+          docker run -d -p 5100:5100 --name titanpl-run titanpl-test
+          sleep 10
+          curl -f http://localhost:5100/h > prod.json
+
+      - name: Stop Container
+        run: docker stop titanpl-run || true
+
+      # ---------------- PREPARE STATUS LOG ----------------
+      - name: Prepare Status File
+        run: |
+          DATE=$(date +%Y-%m-%d_%H-%M-%S)
+          COMMIT=$(git rev-parse --short HEAD)
+          mkdir -p status
+
+          jq -n \
+            --arg date "$DATE" \
+            --arg commit "$COMMIT" \
+            --slurpfile dev dev.json \
+            --slurpfile prod prod.json \
+            '{
+              date:$date,
+              commit:$commit,
+              dev:$dev[0],
+              production:$prod[0]
+            }' > status/$DATE-$COMMIT.json
+
+      # ---------------- COMMIT STATUS ----------------
+      - name: Commit Status Logs
+        run: |
+          git config user.name "TitanPl CI"
+          git config user.email "ci@titan.local"
+          git add status/
+
+          if ! git diff --cached --quiet; then
+            git commit -m "TitanPl CI Status Log"
+            git push
+          else
+            echo "No status changes"
+          fi

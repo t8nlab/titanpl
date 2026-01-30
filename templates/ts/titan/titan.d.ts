@@ -10,7 +10,7 @@ export interface TitanBuilder {
     get(route: string): RouteHandler;
     post(route: string): RouteHandler;
     log(module: string, msg: string): void;
-    start(port?: number, msg?: string): Promise<void>;
+    start(port?: number, msg?: string, threads?: number): Promise<void>;
 }
 
 declare const builder: TitanBuilder;

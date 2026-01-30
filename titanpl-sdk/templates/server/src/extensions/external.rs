@@ -104,8 +104,10 @@ pub fn load_project_extensions(root: PathBuf) {
         }
     }
     
-    if node_modules.exists() {
-        for entry in WalkDir::new(&node_modules).follow_links(true).min_depth(1).max_depth(4) {
+    // Generic scanner helper
+    let scan_dir = |path: PathBuf, modules: &mut Vec<ModuleDef>, libs: &mut Vec<Library>, all_natives: &mut Vec<NativeFnEntry>| {
+        if !path.exists() { return; }
+        for entry in WalkDir::new(&path).follow_links(true).min_depth(1).max_depth(4) {
             let entry = match entry { Ok(e) => e, Err(_) => continue };
             if entry.file_type().is_file() && entry.file_name() == "titan.json" {
                 let dir = entry.path().parent().unwrap();
@@ -118,17 +120,28 @@ pub fn load_project_extensions(root: PathBuf) {
                 if let Some(native_conf) = config.native {
                      let lib_path = dir.join(&native_conf.path);
                      unsafe {
-                         if let Ok(lib) = Library::new(&lib_path) {
-                             for (fn_name, fn_conf) in native_conf.functions {
-                                 let params = fn_conf.parameters.iter().map(|p| parse_type(&p.to_lowercase())).collect();
-                                 let ret = parse_return(&fn_conf.result.to_lowercase());
-                                 if let Ok(symbol) = lib.get::<*const ()>(fn_conf.symbol.as_bytes()) {
-                                      let idx = all_natives.len();
-                                      all_natives.push(NativeFnEntry { symbol_ptr: *symbol as usize, sig: Signature { params, ret } });
-                                      mod_natives_map.insert(fn_name, idx);
+                         // Try loading library
+                         let lib_load = Library::new(&lib_path);
+                         // If failed, try resolving relative to current dir or LD_LIBRARY_PATH implicit
+                         // But usually absolute path from `dir` works.
+                         match lib_load {
+                            Ok(lib) => {
+                                 for (fn_name, fn_conf) in native_conf.functions {
+                                     let params = fn_conf.parameters.iter().map(|p| parse_type(&p.to_lowercase())).collect();
+                                     let ret = parse_return(&fn_conf.result.to_lowercase());
+                                     if let Ok(symbol) = lib.get::<*const ()>(fn_conf.symbol.as_bytes()) {
+                                          let idx = all_natives.len();
+                                          all_natives.push(NativeFnEntry { symbol_ptr: *symbol as usize, sig: Signature { params, ret } });
+                                          mod_natives_map.insert(fn_name, idx);
+                                     } else {
+                                          println!("{} {} {} -> {}", blue("[Titan]"), red("Symbol not found:"), fn_conf.symbol, config.name);
+                                     }
                                  }
-                             }
-                             libs.push(lib);
+                                 libs.push(lib);
+                            },
+                            Err(e) => {
+                                println!("{} {} {} -> {:?}", blue("[Titan]"), red("Failed to load native lib:"), config.name, e);
+                            }
                          }
                      }
                 }
@@ -137,7 +150,19 @@ pub fn load_project_extensions(root: PathBuf) {
                 println!("{} {} {}", blue("[Titan]"), green("Extension loaded:"), config.name);
             }
         }
+    };
+
+    // Scan node_modules
+    if node_modules.exists() {
+        scan_dir(node_modules, &mut modules, &mut libs, &mut all_natives);
     }
+
+    // Scan .ext (Production / Docker)
+    let ext_dir = root.join(".ext");
+    if ext_dir.exists() {
+        scan_dir(ext_dir, &mut modules, &mut libs, &mut all_natives);
+    }
+    
     *REGISTRY.lock().unwrap() = Some(Registry { _libs: libs, modules, natives: all_natives });
 }
 

@@ -195,17 +195,34 @@ async function startRustServer(retryCount = 0) {
                 stderrBuffer.includes("AddrInUse");
 
             if (isPortError) {
+                if (retryCount < 3) {
+                    // It's likely the previous process hasn't fully released the port
+                    await delay(1000);
+                    await startRustServer(retryCount + 1);
+                    return;
+                }
+
                 stopSpinner(false, "Orbit stabilization failed");
+
+                // Try to read intended port
+                let port = 3000;
+                try {
+                    const routesConfig = JSON.parse(fs.readFileSync(path.join(process.cwd(), "server", "routes.json"), "utf8"));
+                    if (routesConfig && routesConfig.__config && routesConfig.__config.port) {
+                        port = routesConfig.__config.port;
+                    }
+                } catch (e) { }
+
                 console.log("");
 
                 console.log(red("⏣  Your application cannot enter this orbit"));
-                console.log(red("↳  Another application is already bound to this port."));
+                console.log(red(`↳  Another application is already bound to port ${port}.`));
                 console.log("");
 
                 console.log(yellow("Recommended Actions:"));
                 console.log(yellow("  1.") + " Release the occupied orbit (stop the other service).");
                 console.log(yellow("  2.") + " Assign your application to a new orbit in " + cyan("app/app.js"));
-                console.log(yellow("     Example: ") + cyan('t.start(3001, "Titan Running!")'));
+                console.log(yellow("     Example: ") + cyan(`t.start(${port + 1}, "Titan Running!")`));
                 console.log("");
 
                 return;

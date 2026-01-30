@@ -72,7 +72,7 @@ const t = {
    * RULE: Only calls bundle() - does NOT handle esbuild errors
    * RULE: If bundle throws __TITAN_BUNDLE_FAILED__, stop immediately without printing
    */
-  async start(port = 3000, msg = "", threads) {
+  async start(port = 3000, msg = "", threads, stack_mb = 8) {
     try {
       console.log(cyan("[Titan] Preparing runtime..."));
 
@@ -91,7 +91,7 @@ const t = {
         routesPath,
         JSON.stringify(
           {
-            __config: { port, threads },
+            __config: { port, threads, stack_mb },
             routes,
             __dynamic_routes: Object.values(dynamicRoutes).flat()
           },

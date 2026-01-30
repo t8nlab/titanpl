@@ -1,6 +1,6 @@
 {
   "name": "@ezetgalaxy/titan",
-  "version": "26.13.1",
+  "version": "26.13.3",
   "description": "Titan Planet is a JavaScript-first backend framework that embeds JS actions into a Rust + Axum server and ships as a single native binary. Routes are compiled to static metadata; only actions run in the embedded JS runtime. No Node.js. No event loop in production.",
   "license": "ISC",
   "author": "ezetgalaxy",
@@ -18,6 +18,10 @@
   ],
   "keywords": [
     "titan",
+    "titanpl",
+    "t8n",
+    "tpl",
+    "tgrv",
     "titanjs",
     "ezetgalaxy",
     "framework",

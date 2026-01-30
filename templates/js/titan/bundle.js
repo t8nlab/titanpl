@@ -158,7 +158,7 @@ export async function bundleFile(options) {
 export async function bundle() {
     const root = process.cwd();
     const actionsDir = path.join(root, 'app', 'actions');
-    const bundleDir = path.join(root, 'server', 'actions');
+    const bundleDir = path.join(root, 'server', 'src', 'actions');
 
     // Ensure bundle directory exists and is clean
     if (fs.existsSync(bundleDir)) {
@@ -197,7 +197,7 @@ export async function bundle() {
                 minify: false,
                 sourcemap: false,
                 banner: {
-                    js: "const defineAction = (fn) => fn; const Titan = t;"
+                    js: "var Titan = t;"
                 },
                 footer: {
                     js: `

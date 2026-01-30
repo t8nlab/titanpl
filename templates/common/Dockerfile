@@ -1,66 +1,89 @@
 # ================================================================
-# STAGE 1 — Build Titan (JS → Rust)
+# STAGE 1 — Build TitanPl
 # ================================================================
-FROM rust:1.91.1 AS builder
+FROM node:20.20.0-slim AS builder
 
-# Install Node for Titan CLI + bundler
-RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
-    && apt-get install -y nodejs
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl ca-certificates build-essential pkg-config libssl-dev git bash \
+    && curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | \
+       sh -s -- -y --default-toolchain stable --profile minimal \
+    && rm -rf /var/lib/apt/lists/*
 
-# Install Titan CLI (latest)
-RUN npm install -g @ezetgalaxy/titan@latest
+ENV PATH="/root/.cargo/bin:${PATH}"
+ENV NODE_ENV=production
+ENV RUSTFLAGS="-C target-cpu=native -C strip=symbols"
 
 WORKDIR /app
 
-# Copy project files
+# ---------- Rust Cache ----------
+RUN mkdir -p server/src
+COPY server/Cargo.toml server/Cargo.lock* server/
+RUN echo "fn main(){}" > server/src/main.rs
+WORKDIR /app/server
+RUN cargo build --release
+RUN rm src/main.rs
+WORKDIR /app
+
+# ---------- Node Cache ----------
+COPY package.json package-lock.json* ./
+RUN if [ -f package-lock.json ]; then npm ci --omit=dev; else npm install --omit=dev; fi
+
+RUN npm install -g @ezetgalaxy/titan@latest
+
+# ---------- Copy Project ----------
 COPY . .
 
-# Install JS dependencies (needed for Titan DSL + bundler)
-RUN npm install
+RUN node app/app.js --build
 
+# ---------- Extensions ----------
 SHELL ["/bin/bash", "-c"]
-
-# Extract Titan extensions into .ext
 RUN mkdir -p /app/.ext && \
-    find /app/node_modules -maxdepth 5 -type f -name "titan.json" -print0 | \
+    find /app/node_modules -type f -name "titan.json" -print0 | \
     while IFS= read -r -d '' file; do \
-    pkg_dir="$(dirname "$file")"; \
-    pkg_name="$(basename "$pkg_dir")"; \
-    echo "Copying Titan extension: $pkg_name from $pkg_dir"; \
-    cp -r "$pkg_dir" "/app/.ext/$pkg_name"; \
-    done && \
-    echo "Extensions in .ext:" && \
-    ls -R /app/.ext
+        pkg_dir="$(dirname "$file")"; \
+        pkg_name="$(basename "$pkg_dir")"; \
+        cp -r "$pkg_dir" "/app/.ext/$pkg_name"; \
+        rm -rf "/app/.ext/$pkg_name/node_modules"; \
+    done
 
-# Build Titan metadata + bundle JS actions
-RUN titan build
-
-# Build Rust binary
 RUN cd server && cargo build --release
 
 
 
 # ================================================================
-# STAGE 2 — Runtime Image (Lightweight)
+# STAGE 2 — Runtime (Render Safe)
 # ================================================================
-FROM debian:stable-slim
+FROM debian:bookworm-slim
+
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends ca-certificates curl && \
+    rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
-# Copy Rust binary from builder stage
+# ---- Copy Files as root ----
 COPY --from=builder /app/server/target/release/titan-server ./titan-server
-
-# Copy Titan routing metadata
-COPY --from=builder /app/server/routes.json ./routes.json
-COPY --from=builder /app/server/action_map.json ./action_map.json
-
-# Copy Titan JS bundles
-RUN mkdir -p /app/actions
-COPY --from=builder /app/server/actions /app/actions
-
-# Copy only Titan extensions
+COPY --from=builder /app/server/routes.json .
+COPY --from=builder /app/server/action_map.json .
+COPY --from=builder /app/server/src/actions ./actions
+COPY --from=builder /app/app/static ./static
 COPY --from=builder /app/.ext ./.ext
+
+# ---- Ensure Executable ----
+RUN chmod +x ./titan-server
+
+# ---- Create User After Copy ----
+RUN useradd -m titan && chown -R titan:titan /app
+USER titan
+
+# ---- Platform Defaults ----
+ENV HOST=0.0.0.0
+ENV PORT=5100
+
+# ---- Verify Node Not Present ----
+RUN which node || echo "NodeJS not present ✔"
 
 EXPOSE 5100
 
-CMD ["./titan-server"]
+# ---- Force Foreground Process ----
+ENTRYPOINT ["./titan-server"]

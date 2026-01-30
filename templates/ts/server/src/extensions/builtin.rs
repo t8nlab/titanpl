@@ -158,12 +158,64 @@ fn setup_native_utils(scope: &mut v8::HandleScope, t_obj: v8::Local<v8::Object>)
     let fs_read_fn = v8::Function::new(scope, native_read).unwrap();
     let read_key = v8_str(scope, "read");
     fs_obj.set(scope, read_key.into(), fs_read_fn.into());
+
+    let fs_read_sync_fn = v8::Function::new(scope, native_read_sync).unwrap();
+    let read_sync_key = v8_str(scope, "readFile");
+    fs_obj.set(scope, read_sync_key.into(), fs_read_sync_fn.into());
+    
+    // Also Expose as t.readSync
+    let t_read_sync_fn = v8::Function::new(scope, native_read_sync).unwrap();
+    let t_read_sync_key = v8_str(scope, "readSync");
+    t_obj.set(scope, t_read_sync_key.into(), t_read_sync_fn.into());
     
     let fs_key = v8_str(scope, "fs");
     core_obj.set(scope, fs_key.into(), fs_obj.into());
     
-    let core_key = v8_str(scope, "core");
-    t_obj.set(scope, core_key.into(), core_obj.into());
+
+}
+
+fn native_read_sync(scope: &mut v8::HandleScope, args: v8::FunctionCallbackArguments, mut retval: v8::ReturnValue) {
+    let path_val = args.get(0);
+    if !path_val.is_string() {
+        throw(scope, "readSync/readFile: path is required");
+        return;
+    }
+    let path_str = v8_to_string(scope, path_val);
+
+    let root = super::PROJECT_ROOT.get().cloned().unwrap_or_else(|| std::env::current_dir().unwrap_or_default());
+    let joined = root.join(&path_str);
+    
+    // Security Check
+    if let Ok(target) = joined.canonicalize() {
+        // In Docker, /app/static/index.html vs /app
+        // Canonical paths might resolve symlinks. 
+        // We just ensure it's within root or a subdirectory.
+        // For simplicity in this fix, we trust canonicalize logic if it exists, otherwise strict join.
+        if target.starts_with(&root.canonicalize().unwrap_or(root.clone())) {
+            match std::fs::read_to_string(&target) {
+                Ok(content) => {
+                    let v8_content = v8_str(scope, &content);
+                    retval.set(v8_content.into());
+                },
+                Err(e) => {
+                     // Return null or throw? Node's readFile throws. Titan types say return string.
+                     // The user's code: fs.readFile(...) || "Default"
+                     // This implies it might return undefined/null on failure?
+                     // Or maybe they expect it to succeed. 
+                     // Let's throw to be safe for debugging, or return null if not found?
+                     // "||" handles null/undefined usually.
+                     // But usually readFile throws if file not found.
+                     // Let's print error and return null to avoid crashing entire worker init if optional.
+                     retval.set(v8::null(scope).into());
+                }
+            }
+        } else {
+             retval.set(v8::null(scope).into());
+        }
+    } else {
+        // File doesn't exist usually
+        retval.set(v8::null(scope).into());
+    }
 }
 
 fn native_read(scope: &mut v8::HandleScope, args: v8::FunctionCallbackArguments, mut retval: v8::ReturnValue) {
@@ -684,13 +736,11 @@ fn native_drift_call(scope: &mut v8::HandleScope, mut args: v8::FunctionCallback
     // Trigger Tokio task completion handling in a separate bridge
     let tokio_handle = runtime.tokio_handle.clone();
     let worker_tx = runtime.worker_tx.clone();
-    let isolate_id = runtime.id; 
     
     tokio_handle.spawn(async move {
         if let Ok(res) = rx.await {
             // Signal the pool to RESUME (REPLAY) this specific isolate
             let _ = worker_tx.send(crate::runtime::WorkerCommand::Resume {
-                isolate_id,
                 drift_id,
                 result: res,
             });
@@ -703,7 +753,6 @@ fn native_drift_call(scope: &mut v8::HandleScope, mut args: v8::FunctionCallback
 fn native_finish_request(scope: &mut v8::HandleScope, mut args: v8::FunctionCallbackArguments, _retval: v8::ReturnValue) {
     let request_id = args.get(0).uint32_value(scope).unwrap_or(0);
     let result_val = args.get(1);
-    
     let json = super::v8_to_json(scope, result_val);
 
     let runtime_ptr = unsafe { args.get_isolate() }.get_data(0) as *mut super::TitanRuntime;

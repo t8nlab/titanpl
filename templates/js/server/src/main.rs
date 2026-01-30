@@ -185,7 +185,7 @@ async fn dynamic_handler_inner(
     // This sends a pointer-sized message through the ring buffer, triggering 
     // the V8 thread to wake up and process the request immediately.
 
-    // Dispatch to the optimized RuntimeManager
+    // Dispatch to the worker pool for V8 execution
     let (mut result_json, timings) = state
         .runtime
         .execute(
@@ -198,7 +198,10 @@ async fn dynamic_handler_inner(
             query_vec
         )
         .await
-        .unwrap_or_else(|e| (serde_json::json!({"error": e}), vec![]));
+        .unwrap_or_else(|e| {
+            // Log catastrophic runtime errors
+            (serde_json::json!({"error": e}), vec![])
+        });
 
     // Construct Server-Timing header
     let server_timing = timings.iter().enumerate().map(|(i, (name, duration))| {
@@ -210,14 +213,16 @@ async fn dynamic_handler_inner(
         obj.insert("_titanTimings".to_string(), serde_json::json!(timings));
     }
 
-    // Prepare response
-    let mut response = if let Some(err) = result_json.get("error") {
-        let prefix = if !timings.is_empty() { 
-            format!("{} {}", blue("[Titan"), blue("Drift]"))
-        } else {
-            blue("[Titan]").to_string()
-        };
+    let prefix = if !timings.is_empty() { 
+        format!("{} {}", blue("[Titan"), blue("Drift]"))
+    } else {
+        blue("[Titan]").to_string()
+    };
 
+    // ---------------------------
+    // ERROR HANDLING
+    // ---------------------------
+    if let Some(err) = result_json.get("error") {
         println!(
             "{} {} {} {}",
             prefix,
@@ -225,29 +230,25 @@ async fn dynamic_handler_inner(
             red("→ error"),
             gray(&format!("in {:.2?}", start.elapsed()))
         );
-         println!(
-            "{} {} {} {}",
+        println!(
+            "{} {} {}",
             prefix,
             red("Action Error:"),
-            red(err.as_str().unwrap_or("Unknown")),
-            gray(&format!("in {:.2?}", start.elapsed()))
+            red(err.as_str().unwrap_or("Unknown"))
         );
-        (StatusCode::INTERNAL_SERVER_ERROR, Json(result_json.clone())).into_response()
-    } else if let Some(is_resp) = result_json.get("_isResponse") {
-        if is_resp.as_bool().unwrap_or(false) {
-            let status_u16 = match result_json.get("status") {
-                Some(Value::Number(n)) => {
-                    if let Some(u) = n.as_u64() {
-                        u as u16
-                    } else if let Some(f) = n.as_f64() {
-                        f as u16
-                    } else {
-                        200
-                    }
-                }
-                _ => 200,
-            };
+        let mut response = (StatusCode::INTERNAL_SERVER_ERROR, Json(result_json.clone())).into_response();
+        if !server_timing.is_empty() {
+            response.headers_mut().insert("Server-Timing", server_timing.parse().unwrap());
+        }
+        return response;
+    }
 
+    // ---------------------------
+    // RESPONSE CONSTRUCTION
+    // ---------------------------
+    let mut response = if let Some(is_resp) = result_json.get("_isResponse") {
+        if is_resp.as_bool().unwrap_or(false) {
+            let status_u16 = result_json.get("status").and_then(|v| v.as_u64()).unwrap_or(200) as u16;
             let status = StatusCode::from_u16(status_u16).unwrap_or(StatusCode::OK);
             let mut builder = axum::http::Response::builder().status(status);
 
@@ -260,31 +261,22 @@ async fn dynamic_handler_inner(
             }
 
             let mut is_redirect = false;
-            
             if let Some(location) = result_json.get("redirect") {
                 if let Some(url) = location.as_str() {
                     let mut final_status_u16 = status.as_u16();
-                    // If it's a redirect call, ensure we use a 3xx status
-                    if final_status_u16 < 300 || final_status_u16 > 399 {
-                        final_status_u16 = 302; // Default to 302 Found
-                    }
-                    
-                    builder = builder.status(StatusCode::from_u16(final_status_u16).unwrap_or(StatusCode::FOUND))
-                                     .header("Location", url);
+                    if final_status_u16 < 300 || final_status_u16 > 399 { final_status_u16 = 302; }
+                    builder = builder.status(StatusCode::from_u16(final_status_u16).unwrap_or(StatusCode::FOUND)).header("Location", url);
                     is_redirect = true;
                 }
             }
 
-            let body_text = if is_redirect {
-                "".to_string()
-            } else {
+            let body_text = if is_redirect { "".to_string() } else {
                 match result_json.get("body") {
                     Some(Value::String(s)) => s.clone(),
                     Some(v) => v.to_string(),
                     None => "".to_string(),
                 }
             };
-
             builder.body(Body::from(body_text)).unwrap()
         } else {
             Json(result_json.clone()).into_response()
@@ -293,7 +285,6 @@ async fn dynamic_handler_inner(
         Json(result_json.clone()).into_response()
     };
 
-    // Add Server-Timing Header
     if !server_timing.is_empty() {
         response.headers_mut().insert("Server-Timing", server_timing.parse().unwrap());
     }
@@ -303,19 +294,8 @@ async fn dynamic_handler_inner(
     // ---------------------------
     let total_elapsed = start.elapsed();
     let total_elapsed_ms = total_elapsed.as_secs_f64() * 1000.0;
-    
-    let total_drift_ms: f64 = timings.iter()
-        .filter(|(n, _)| n == "drift" || n == "drift_error")
-        .map(|(_, d)| d)
-        .sum();
-    
+    let total_drift_ms: f64 = timings.iter().filter(|(n, _)| n == "drift" || n == "drift_error").map(|(_, d)| d).sum();
     let compute_ms = (total_elapsed_ms - total_drift_ms).max(0.0);
-
-    let prefix = if !timings.is_empty() { 
-        format!("{} {}", blue("[Titan"), blue("Drift]"))
-    } else {
-        blue("[Titan]").to_string()
-    };
 
     let timing_info = if !timings.is_empty() {
         gray(&format!("(active: {:.2}ms, drift: {:.2}ms) in {:.2?}", compute_ms, total_drift_ms, total_elapsed))
@@ -324,23 +304,8 @@ async fn dynamic_handler_inner(
     };
 
     match route_kind {
-        "dynamic" => println!(
-            "{} {} {} {} {} {}",
-            prefix,
-            green(&format!("{} {}", method, path)),
-            white("→"),
-            green(&route_label),
-            white("(dynamic)"),
-            timing_info
-        ),
-        "exact" => println!(
-            "{} {} {} {} {}",
-            prefix,
-            white(&format!("{} {}", method, path)),
-            white("→"),
-            yellow(&route_label),
-            timing_info
-        ),
+        "dynamic" => println!("{} {} {} {} {} {}", prefix, green(&format!("{} {}", method, path)), white("→"), green(&route_label), white("(dynamic)"), timing_info),
+        "exact" => println!("{} {} {} {} {}", prefix, white(&format!("{} {}", method, path)), white("→"), yellow(&route_label), timing_info),
         _ => {}
     }
 
@@ -358,18 +323,23 @@ async fn main() -> Result<()> {
     let raw = fs::read_to_string("./routes.json").unwrap_or_else(|_| "{}".to_string());
     let json: Value = serde_json::from_str(&raw).unwrap_or_default();
 
-    let port = json["__config"]["port"].as_u64().unwrap_or(3000);
+    let port = std::env::var("PORT")
+        .ok()
+        .and_then(|p| p.parse::<u64>().ok())
+        .or_else(|| json["__config"]["port"].as_u64())
+        .unwrap_or(3000);
     let thread_count = json["__config"]["threads"].as_u64();
     let routes_json = json["routes"].clone();
     let map: HashMap<String, RouteVal> = serde_json::from_value(routes_json).unwrap_or_default();
     let dynamic_routes: Vec<DynamicRoute> =
         serde_json::from_value(json["__dynamic_routes"].clone()).unwrap_or_default();
 
-    // Identify project root (where .ext or node_modules lives)
+    // Identify project root
     let project_root = resolve_project_root();
-
-    // Load extensions (Load definitions globally)
+    
+    // Load extensions and action definitions
     extensions::load_project_extensions(project_root.clone());
+
     
     // Initialize Runtime Manager (Worker Pool)
     let threads = match thread_count {
@@ -377,8 +347,10 @@ async fn main() -> Result<()> {
         _ => num_cpus::get() * 4,   // default
     };
 
+    let stack_mb = json["__config"]["stack_mb"].as_u64().unwrap_or(8);
+    let stack_size = (stack_mb as usize) * 1024 * 1024;
     
-    let runtime_manager = Arc::new(RuntimeManager::new(project_root.clone(), threads));
+    let runtime_manager = Arc::new(RuntimeManager::new(project_root.clone(), threads, stack_size));
 
     let state = AppState {
         routes: Arc::new(map),
@@ -395,9 +367,10 @@ async fn main() -> Result<()> {
 
     
     println!(
-        "\x1b[38;5;39mTitan server running at:\x1b[0m http://localhost:{}  \x1b[90m(Threads: {})\x1b[0m",
+        "\x1b[38;5;39mTitan server running at:\x1b[0m http://localhost:{}  \x1b[90m(Threads: {}, Stack: {}MB)\x1b[0m",
         port,
-        threads
+        threads,
+        stack_mb
     );
     
 

@@ -119,6 +119,13 @@ pub struct RequestData {
 unsafe impl Send for TitanRuntime {}
 unsafe impl Sync for TitanRuntime {}
 
+impl TitanRuntime {
+    pub fn bind_to_isolate(&mut self) {
+        let ptr = self as *mut TitanRuntime as *mut std::ffi::c_void;
+        self.isolate.set_data(0, ptr);
+    }
+}
+
 static V8_INIT: Once = Once::new();
 
 pub fn init_v8() {
@@ -135,17 +142,14 @@ pub fn init_runtime_worker(
     worker_tx: crossbeam::channel::Sender<crate::runtime::WorkerCommand>,
     tokio_handle: tokio::runtime::Handle,
     global_async_tx: tokio::sync::mpsc::Sender<AsyncOpRequest>,
+    stack_size: usize,
 ) -> TitanRuntime {
     init_v8();
 
-    // Memory optimization strategy (v8 0.106.0 limitations):
-    // - V8 snapshots reduce memory footprint by sharing compiled code
-    // - Each isolate still has its own heap, but the snapshot reduces base overhead
-    // - For explicit heap limits, use V8 flags: --max-old-space-size=128
-
+    // Memory optimization strategy
     let params = v8::CreateParams::default();
     let mut isolate = v8::Isolate::new(params);
-
+    
     let (global_context, actions_map) = {
         let handle_scope = &mut v8::HandleScope::new(&mut isolate);
         let context = v8::Context::new(handle_scope, v8::ContextOptions::default());
@@ -165,6 +169,7 @@ pub fn init_runtime_worker(
         let action_files = scan_actions(&root);
         for (name, path) in action_files {
             if let Ok(code) = fs::read_to_string(&path) {
+                // Wrap action in an IIFE to capture its exports and register it globally
                 let wrapped_source =
                     format!("(function() {{ {} }})(); globalThis[\"{}\"];", code, name);
                 let source_str = v8_str(scope, &wrapped_source);
@@ -174,8 +179,22 @@ pub fn init_runtime_worker(
                         if val.is_function() {
                             let func = v8::Local::<v8::Function>::try_from(val).unwrap();
                             map.insert(name.clone(), v8::Global::new(try_catch, func));
+                        } else if id == 0 {
+                            println!("[V8] Action '{}' did not evaluate to a function: {:?}", name, val.to_rust_string_lossy(try_catch));
                         }
+                    } else if id == 0 {
+                        let msg = try_catch
+                            .message()
+                            .map(|m| m.get(try_catch).to_rust_string_lossy(try_catch))
+                            .unwrap_or("Unknown run error".to_string());
+                        println!("[V8] Failed to run action '{}': {}", name, msg);
                     }
+                } else if id == 0 {
+                    let msg = try_catch
+                        .message()
+                        .map(|m| m.get(try_catch).to_rust_string_lossy(try_catch))
+                        .unwrap_or("Unknown compile error".to_string());
+                    println!("[V8] Failed to compile action '{}': {}", name, msg);
                 }
             }
         }
@@ -312,6 +331,7 @@ pub fn execute_action_optimized(
     params: &[(String, String)],
     query: &[(String, String)],
 ) {
+    // Execute action in V8
     let context_global = runtime.context.clone();
     let actions_map = runtime.actions.clone(); // Clone the map of globals (cheap)
     let isolate = &mut runtime.isolate;
@@ -384,21 +404,19 @@ pub fn execute_action_optimized(
         let try_catch = &mut v8::TryCatch::new(scope);
 
         if let Some(_) = action_fn.call(try_catch, global.into(), &[req_obj.into()]) {
-            // JS side is responsible for calling t._finish_request(requestId, result)
-            // Even if the action is NOT async, our JS wrapper in titan_core.js will handle it.
             return;
         }
-
+        
         let msg = try_catch
             .message()
             .map(|m| m.get(try_catch).to_rust_string_lossy(try_catch))
             .unwrap_or("Unknown error".to_string());
         
-        // Check for suspension
         if msg.contains("SUSPEND") {
             return;
         }
 
+        println!("[Isolate {}] Action Error: {}", runtime.id, msg);
         if let Some(tx) = runtime.pending_requests.remove(&request_id) {
              let _ = tx.send(crate::runtime::WorkerResult { 
                  json: serde_json::json!({"error": msg}),
