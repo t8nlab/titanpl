@@ -136,7 +136,7 @@ jobs:
           import t from "../titan/titan.js";
           t.get("/").reply("ok");
           t.get("/h").action("health");
-          t.start(5100);
+          t.start(5100, "TitanPl dev-prod test", 6);
           EOF
 
       # ---------------- DEV ----------------
@@ -148,7 +148,7 @@ jobs:
           echo "Waiting Titan Dev..."
           READY=false
 
-          for i in {1..120}; do
+          for i in {1..180}; do
             if curl -s http://127.0.0.1:5100/ > /dev/null; then
               READY=true
               break
