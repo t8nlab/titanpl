@@ -1,5 +1,52 @@
 # Changelog
 
+## [26.13.6] – 2026-02-01
+
+### Summary
+Full TypeScript support across templates, `@titan/route` and `@titan/native` path aliases, critical `t.fetch` async typing fix, and restructured type definitions to eliminate declaration conflicts.
+
+### Breaking Changes
+- `eslint-plugin-titanpl` → `^2.0.0`
+- `"../titan/titan.js"` → `"@titan/route"`
+- `"../../titan/runtime"` → `"@titan/native"`
+- `eslint.config.js` moved to individual templates
+
+## 🐛 Fixes
+
+### **Critical `t.fetch` Typing Bug**
+`titan/titan.d.ts` overwrote correct async `Promise<{ok: boolean}>` return type from `app/titan.d.ts`. Removed duplicate `declare global` block entirely.
+
+### **Type Definition Conflicts**
+Split declarations cleanly:
+- `app/t.native.d.ts` (`@titan/native`): Runtime types, `TitanRequest`, `defineAction`, named exports (`fetch`, `log`, `db`)
+- `titan/titan.d.ts` (`@titan/route`): Builder types only (`RouteHandler`, `TitanBuilder`)
+
+## 🔧 Improvements
+
+### **Path Aliases**
+Added `@titan/route` → `./titan/titan` and `@titan/native` → `./app/t` across **all templates** (`js/`, `ts/`, `rust-js/`, `rust-ts/`).
+
+### **Named Exports**
+`app/t.native.js` now exports `fetch`, `db`, `defineAction` for explicit imports alongside global `t`.
+
+### **TypeScript Templates**
+- Individual `eslint.config.js` with `@typescript-eslint/parser ^8.54.0`
+- Removed `titan/runtime.js`, `titan/runtime.d.ts`
+- Removed `ignores: ['**/*.d.ts']`
+
+### **Other**
+- vitest as peer dependency
+- Version → `26.13.6`
+
+### Affected Templates
+| Template | Changes |
+|----------|---------|
+| `templates/common/` | `app/t.native.d.ts` fixed, `app/t.native.js` added |
+| `templates/js/` | **Aliases**, `eslint.config.js` |
+| `templates/ts/` | **Aliases**, TS ESLint, runtime files removed |
+| `templates/rust-js/` | **Aliases**, `eslint.config.js` |
+| `templates/rust-ts/` | **Aliases**, TS ESLint, runtime files removed
+
 ## [26.13.3] – 2026-01-30
 
 ## 🛠 Fixes
