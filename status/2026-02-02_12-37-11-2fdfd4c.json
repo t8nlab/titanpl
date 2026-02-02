@@ -1,0 +1,38 @@
+{
+  "date": "2026-02-02_12-37-11",
+  "commit": "2fdfd4c",
+  "dev": {
+    "_titanTimings": [],
+    "env": {
+      "cpus": 1.0,
+      "memFree": 0.0,
+      "memTotal": 0.0,
+      "pid": 0.0,
+      "platform": "unknown",
+      "uptime": 0.0
+    },
+    "failed": [
+      "fs",
+      "ls"
+    ],
+    "ok": false,
+    "runtime": {
+      "memory": {},
+      "pid": 0.0,
+      "uptime": 0.0
+    },
+    "tests": {
+      "buffer": true,
+      "crypto": false,
+      "drift": false,
+      "jwt": true,
+      "net": true,
+      "password": true,
+      "response": true
+    },
+    "timestamp": "2026-02-02T12:35:28.286Z",
+    "warnings": [
+      "drift-network"
+    ]
+  }
+}
