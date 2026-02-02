@@ -1,0 +1,19 @@
+{
+  "date": "2026-02-02_11-31-49",
+  "commit": "ce61815",
+  "dev": {
+    "_titanTimings": [],
+    "env": {},
+    "failed": [],
+    "ok": false,
+    "runtime": {},
+    "tests": {
+      "drift": false
+    },
+    "timestamp": "2026-02-02T11:30:08.389Z",
+    "warnings": [
+      "drift-network",
+      "Error: Native fs_exists not found"
+    ]
+  }
+}
