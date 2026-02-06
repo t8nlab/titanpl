@@ -1,7 +1,13 @@
 # Changelog
 
+## [26.14.0] - 2026-02-04
 
-## [2.2.3] - 2026-02-04
+### 🚀 Stabile and ready for production
+
+- **Bug and Performance fixes**: All the bugs included in t.core and other extensions have been fixed.
+
+
+## [26.13.9] - 2026-02-04
 
 ### 🐛 Fixed
 - **Native Extension Loading**: Resolved FFI safety issues in the Titan Server runtime (`src/extensions.rs`).

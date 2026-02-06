@@ -16,18 +16,14 @@ pub struct Registry {
     pub _libs: Vec<Library>, 
     pub modules: Vec<ModuleDef>,
     pub natives: Vec<NativeFnEntry>,
-    pub v8_natives: Vec<usize>,
 }
-
 
 #[derive(Clone)]
 pub struct ModuleDef {
     pub name: String,
     pub js: String,
     pub native_indices: HashMap<String, usize>,
-    pub v8_native_indices: HashMap<String, usize>,
 }
-
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum ParamType {
@@ -60,17 +56,8 @@ struct TitanConfig {
 #[derive(serde::Deserialize)]
 struct TitanNativeConfig {
     path: String,
-    #[serde(default)]
     functions: HashMap<String, TitanNativeFunc>,
-    #[serde(default)]
-    v8_functions: HashMap<String, TitanV8Func>,
 }
-
-#[derive(serde::Deserialize)]
-struct TitanV8Func {
-    symbol: String,
-}
-
 
 #[derive(serde::Deserialize)]
 struct TitanNativeFunc {
@@ -108,8 +95,6 @@ pub fn load_project_extensions(root: PathBuf) {
     let mut modules = Vec::new();
     let mut libs = Vec::new();
     let mut all_natives = Vec::new();
-    let mut all_v8_natives = Vec::new();
-
 
     let mut node_modules = root.join("node_modules");
     if !node_modules.exists() {
@@ -120,8 +105,7 @@ pub fn load_project_extensions(root: PathBuf) {
     }
     
     // Generic scanner helper
-    let scan_dir = |path: PathBuf, modules: &mut Vec<ModuleDef>, libs: &mut Vec<Library>, all_natives: &mut Vec<NativeFnEntry>, all_v8_natives: &mut Vec<usize>| {
-
+    let scan_dir = |path: PathBuf, modules: &mut Vec<ModuleDef>, libs: &mut Vec<Library>, all_natives: &mut Vec<NativeFnEntry>| {
         if !path.exists() { return; }
         for entry in WalkDir::new(&path).follow_links(true).min_depth(1).max_depth(4) {
             let entry = match entry { Ok(e) => e, Err(_) => continue };
@@ -133,9 +117,7 @@ pub fn load_project_extensions(root: PathBuf) {
                     Err(_) => continue,
                 };
                 let mut mod_natives_map = HashMap::new();
-                let mut mod_v8_natives_map = HashMap::new();
                 if let Some(native_conf) = config.native {
-
                      let lib_path = dir.join(&native_conf.path);
                      unsafe {
                          // Try loading library
@@ -144,28 +126,17 @@ pub fn load_project_extensions(root: PathBuf) {
                          // But usually absolute path from `dir` works.
                          match lib_load {
                             Ok(lib) => {
-                                 for (fn_name, fn_conf) in &native_conf.functions {
+                                 for (fn_name, fn_conf) in native_conf.functions {
                                      let params = fn_conf.parameters.iter().map(|p| parse_type(&p.to_lowercase())).collect();
                                      let ret = parse_return(&fn_conf.result.to_lowercase());
                                      if let Ok(symbol) = lib.get::<*const ()>(fn_conf.symbol.as_bytes()) {
                                           let idx = all_natives.len();
                                           all_natives.push(NativeFnEntry { symbol_ptr: *symbol as usize, sig: Signature { params, ret } });
-                                          mod_natives_map.insert(fn_name.clone(), idx);
+                                          mod_natives_map.insert(fn_name, idx);
                                      } else {
                                           println!("{} {} {} -> {}", blue("[Titan]"), red("Symbol not found:"), fn_conf.symbol, config.name);
                                      }
                                  }
-                                 
-                                 for (fn_name, fn_conf) in &native_conf.v8_functions {
-                                      if let Ok(symbol) = lib.get::<*const ()>(fn_conf.symbol.as_bytes()) {
-                                          let idx = all_v8_natives.len();
-                                          all_v8_natives.push(*symbol as usize);
-                                          mod_v8_natives_map.insert(fn_name.clone(), idx);
-                                      } else {
-                                          println!("{} {} {} -> {}", blue("[Titan]"), red("V8 Symbol not found:"), fn_conf.symbol, config.name);
-                                      }
-                                 }
-
                                  libs.push(lib);
                             },
                             Err(e) => {
@@ -175,13 +146,7 @@ pub fn load_project_extensions(root: PathBuf) {
                      }
                 }
                 let js_path = dir.join(&config.main);
-                modules.push(ModuleDef { 
-                    name: config.name.clone(), 
-                    js: fs::read_to_string(js_path).unwrap_or_default(), 
-                    native_indices: mod_natives_map,
-                    v8_native_indices: mod_v8_natives_map
-                });
-
+                modules.push(ModuleDef { name: config.name.clone(), js: fs::read_to_string(js_path).unwrap_or_default(), native_indices: mod_natives_map });
                 println!("{} {} {}", blue("[Titan]"), green("Extension loaded:"), config.name);
             }
         }
@@ -189,18 +154,16 @@ pub fn load_project_extensions(root: PathBuf) {
 
     // Scan node_modules
     if node_modules.exists() {
-        scan_dir(node_modules, &mut modules, &mut libs, &mut all_natives, &mut all_v8_natives);
+        scan_dir(node_modules, &mut modules, &mut libs, &mut all_natives);
     }
-
 
     // Scan .ext (Production / Docker)
     let ext_dir = root.join(".ext");
     if ext_dir.exists() {
-        scan_dir(ext_dir, &mut modules, &mut libs, &mut all_natives, &mut all_v8_natives);
+        scan_dir(ext_dir, &mut modules, &mut libs, &mut all_natives);
     }
     
-    *REGISTRY.lock().unwrap() = Some(Registry { _libs: libs, modules, natives: all_natives, v8_natives: all_v8_natives });
-
+    *REGISTRY.lock().unwrap() = Some(Registry { _libs: libs, modules, natives: all_natives });
 }
 
 pub fn inject_external_extensions(scope: &mut v8::HandleScope, global: v8::Local<v8::Object>, t_obj: v8::Local<v8::Object>) {
@@ -208,10 +171,9 @@ pub fn inject_external_extensions(scope: &mut v8::HandleScope, global: v8::Local
     let invoke_key = v8_str(scope, "__titan_invoke_native");
     global.set(scope, invoke_key.into(), invoke_fn.into());
 
-    let (modules, v8_native_ptrs) = if let Ok(guard) = REGISTRY.lock() {
-        (guard.as_ref().map(|r| r.modules.clone()).unwrap_or_default(), guard.as_ref().map(|r| r.v8_natives.clone()).unwrap_or_default())
-    } else { (vec![], vec![]) };
-
+    let modules = if let Ok(guard) = REGISTRY.lock() {
+        guard.as_ref().map(|r| r.modules.clone()).unwrap_or_default()
+    } else { vec![] };
 
     for module in modules {
          let mod_obj = v8::Object::new(scope);
@@ -224,24 +186,6 @@ pub fn inject_external_extensions(scope: &mut v8::HandleScope, global: v8::Local
                         mod_obj.set(scope, key.into(), val);
                   }
               }
-         }
-
-         for (fn_name, &idx) in &module.v8_native_indices {
-             if let Some(&ptr) = v8_native_ptrs.get(idx) {
-                 if ptr != 0 {
-                     unsafe {
-                         let ext = v8::External::new(scope, ptr as *mut std::ffi::c_void);
-                         let templ = v8::FunctionTemplate::builder(native_invoke_v8_proxy)
-                             .data(ext.into())
-                             .build(scope);
-                         
-                         if let Some(func) = templ.get_function(scope) {
-                             let key = v8_str(scope, fn_name);
-                             mod_obj.set(scope, key.into(), func.into());
-                         }
-                     }
-                 }
-             }
          }
          let mod_key = v8_str(scope, &module.name);
          t_obj.set(scope, mod_key.into(), mod_obj.into());
@@ -327,20 +271,6 @@ fn native_invoke_extension(scope: &mut v8::HandleScope, args: v8::FunctionCallba
              _ => serde_json::Value::Null
          };
          retval.set(js_from_value(scope, &sig.ret, res_val));
-    }
-}
-
-fn native_invoke_v8_proxy(scope: &mut v8::HandleScope, args: v8::FunctionCallbackArguments, retval: v8::ReturnValue) {
-    let val = args.data();
-    if let Ok(ext) = v8::Local::<v8::External>::try_from(val) {
-         let ptr = ext.value() as *mut std::ffi::c_void;
-         if !ptr.is_null() {
-             unsafe {
-                 type TitanV8Handler = extern "C" fn(&mut v8::HandleScope, v8::FunctionCallbackArguments, v8::ReturnValue);
-                 let handler: TitanV8Handler = std::mem::transmute(ptr);
-                 handler(scope, args, retval);
-             }
-         }
     }
 }
 
