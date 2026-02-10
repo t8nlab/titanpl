@@ -205,7 +205,7 @@ fn uses_request_data(source: &str) -> bool {
     // Look for req.method, req.path, req.body, req.headers, req.params, req.query
     // Also req.rawBody, req.__titan_request_id
     // But NOT the parameter declaration itself: (req) => or function(req)
-    
+
     let req_usage = Regex::new(r"req\s*\.\s*\w+").ok();
     if let Some(re) = req_usage {
         if re.is_match(source) {
@@ -219,10 +219,14 @@ fn uses_request_data(source: &str) -> bool {
 // ---------------------------------------------------------------------------
 // PATTERN: t.response.json({ ... })
 // ---------------------------------------------------------------------------
+// FIX: Old regex expected optional numeric second arg (?:,\s*\d+\s*)?\)
+//      which failed to match when second arg is an options object like
+//      { headers: { Server: "titanpl" } }
+//      New regex: just capture the first { ... } argument, ignore the rest.
+// ---------------------------------------------------------------------------
 fn detect_response_json(source: &str) -> Option<StaticResponse> {
-    // Match: t.response.json({ key: "value", ... })
     let re = Regex::new(
-        r#"t\.response\.json\(\s*(\{[^}]+\})\s*(?:,\s*\d+\s*)?\)"#
+        r#"t\.response\.json\(\s*(\{[^}]+\})"#
     ).ok()?;
 
     let caps = re.captures(source)?;
@@ -241,9 +245,12 @@ fn detect_response_json(source: &str) -> Option<StaticResponse> {
 // ---------------------------------------------------------------------------
 // PATTERN: t.response.text("...")
 // ---------------------------------------------------------------------------
+// FIX: Same issue — old regex expected optional numeric second arg.
+//      New regex: just capture the string, ignore everything after.
+// ---------------------------------------------------------------------------
 fn detect_response_text(source: &str) -> Option<StaticResponse> {
     let re = Regex::new(
-        r#"t\.response\.text\(\s*"([^"]*?)"\s*(?:,\s*\d+\s*)?\)"#
+        r#"t\.response\.text\(\s*"([^"]*?)""#
     ).ok()?;
 
     let caps = re.captures(source)?;
@@ -259,9 +266,12 @@ fn detect_response_text(source: &str) -> Option<StaticResponse> {
 // ---------------------------------------------------------------------------
 // PATTERN: t.response.html("...")
 // ---------------------------------------------------------------------------
+// FIX: Same issue — old regex expected optional numeric second arg.
+//      New regex: just capture the string, ignore everything after.
+// ---------------------------------------------------------------------------
 fn detect_response_html(source: &str) -> Option<StaticResponse> {
     let re = Regex::new(
-        r#"t\.response\.html\(\s*"([^"]*?)"\s*(?:,\s*\d+\s*)?\)"#
+        r#"t\.response\.html\(\s*"([^"]*?)""#
     ).ok()?;
 
     let caps = re.captures(source)?;

@@ -22,22 +22,21 @@ use axum::{
     response::{IntoResponse, Json},
     routing::any,
 };
-use bytes::Bytes;
 use serde_json::Value;
+use smallvec::SmallVec;
 use std::time::Instant;
 use std::{collections::HashMap, fs, path::PathBuf, sync::Arc};
 use tokio::net::TcpListener;
-use smallvec::SmallVec;
 
-mod utils;
 mod action_management;
 mod extensions;
-mod runtime;
 mod fast_path;
+mod runtime;
+mod utils;
 
 use action_management::{DynamicRoute, RouteVal, match_dynamic_route};
-use runtime::RuntimeManager;
 use fast_path::{FastPathRegistry, PrecomputedRoute};
+use runtime::RuntimeManager;
 use utils::{blue, gray, green, red, white, yellow};
 
 // =============================================================================
@@ -76,10 +75,7 @@ async fn dynamic_route(state: State<AppState>, req: Request<Body>) -> impl IntoR
 }
 
 /// Main request handler — optimized with early fast-path bailout.
-async fn handler(
-    State(state): State<AppState>,
-    req: Request<Body>,
-) -> impl IntoResponse {
+async fn handler(State(state): State<AppState>, req: Request<Body>) -> impl IntoResponse {
     let method = req.method().as_str().to_uppercase();
     let path = req.uri().path().to_string();
     let strict_key = format!("{}:{}", method, path);
@@ -91,7 +87,11 @@ async fn handler(
     // we return pre-computed bytes without touching the request body, headers,
     // or V8 runtime. This path costs ~2-5µs vs ~50-100µs for the V8 path.
 
-    if let Some(route) = state.routes.get(&strict_key).or_else(|| state.routes.get(&path)) {
+    if let Some(route) = state
+        .routes
+        .get(&strict_key)
+        .or_else(|| state.routes.get(&path))
+    {
         // --- Reply routes (pre-computed) ---
         if route.r#type == "json" || route.r#type == "text" {
             if let Some(precomputed) = state.precomputed.get(&strict_key) {
@@ -157,7 +157,10 @@ async fn handler(
     let mut route_label = String::from("not_found");
 
     // Exact route lookup (may find action routes not caught in fast-path phase)
-    let route = state.routes.get(&strict_key).or_else(|| state.routes.get(&path));
+    let route = state
+        .routes
+        .get(&strict_key)
+        .or_else(|| state.routes.get(&path));
     if let Some(route) = route {
         route_kind = "exact";
         if route.r#type == "action" {
@@ -167,12 +170,24 @@ async fn handler(
         } else if route.r#type == "json" {
             // This path shouldn't be reached (handled in Phase 1), but keep as safety
             if log_enabled {
-                println!("{} {} {} {}", blue("[Titan]"), white(&format!("{} {}", method, path)), white("→ json"), gray(&format!("in {:.2?}", start.elapsed())));
+                println!(
+                    "{} {} {} {}",
+                    blue("[Titan]"),
+                    white(&format!("{} {}", method, path)),
+                    white("→ json"),
+                    gray(&format!("in {:.2?}", start.elapsed()))
+                );
             }
             return Json(route.value.clone()).into_response();
         } else if let Some(s) = route.value.as_str() {
             if log_enabled {
-                println!("{} {} {} {}", blue("[Titan]"), white(&format!("{} {}", method, path)), white("→ reply"), gray(&format!("in {:.2?}", start.elapsed())));
+                println!(
+                    "{} {} {} {}",
+                    blue("[Titan]"),
+                    white(&format!("{} {}", method, path)),
+                    white("→ reply"),
+                    gray(&format!("in {:.2?}", start.elapsed()))
+                );
             }
             return s.to_string().into_response();
         }
@@ -180,7 +195,9 @@ async fn handler(
 
     // Dynamic route matching
     if action_name.is_none() {
-        if let Some((action, p)) = match_dynamic_route(&method, &path, state.dynamic_routes.as_slice()) {
+        if let Some((action, p)) =
+            match_dynamic_route(&method, &path, state.dynamic_routes.as_slice())
+        {
             route_kind = "dynamic";
             route_label = action.clone();
             action_name = Some(action);
@@ -192,7 +209,13 @@ async fn handler(
         Some(a) => a,
         None => {
             if log_enabled {
-                println!("{} {} {} {}", blue("[Titan]"), white(&format!("{} {}", method, path)), white("→ 404"), gray(&format!("in {:.2?}", start.elapsed())));
+                println!(
+                    "{} {} {} {}",
+                    blue("[Titan]"),
+                    white(&format!("{} {}", method, path)),
+                    white("→ 404"),
+                    gray(&format!("in {:.2?}", start.elapsed()))
+                );
             }
             return (StatusCode::NOT_FOUND, "Not Found").into_response();
         }
@@ -230,15 +253,6 @@ async fn handler(
     // PHASE 4: RESPONSE CONSTRUCTION
     // =================================================================
 
-    // Server-Timing header (always set in headers, never injected into body)
-    let server_timing = if !timings.is_empty() {
-        timings.iter().enumerate().map(|(i, (name, duration))| {
-            format!("{}_{};dur={:.2}", name, i, duration)
-        }).collect::<Vec<_>>().join(", ")
-    } else {
-        String::new()
-    };
-
     // NOTE: We intentionally do NOT inject _titanTimings into the JSON body.
     // This was corrupting benchmark responses (e.g., adding extra fields to
     // {"message":"Hello, World!"} which fails TechEmpower validation).
@@ -247,21 +261,36 @@ async fn handler(
     // --- Error handling ---
     if let Some(err) = result_json.get("error") {
         if log_enabled {
-            let prefix = if !timings.is_empty() { format!("{} {}", blue("[Titan"), blue("Drift]")) } else { blue("[Titan]").to_string() };
-            println!("{} {} {} {}", prefix, red(&format!("{} {}", method, path)), red("→ error"), gray(&format!("in {:.2?}", start.elapsed())));
-            println!("{} {} {}", prefix, red("Action Error:"), red(err.as_str().unwrap_or("Unknown")));
+            let prefix = if !timings.is_empty() {
+                format!("{} {}", blue("[Titan"), blue("Drift]"))
+            } else {
+                blue("[Titan]").to_string()
+            };
+            println!(
+                "{} {} {} {}",
+                prefix,
+                red(&format!("{} {}", method, path)),
+                red("→ error"),
+                gray(&format!("in {:.2?}", start.elapsed()))
+            );
+            println!(
+                "{} {} {}",
+                prefix,
+                red("Action Error:"),
+                red(err.as_str().unwrap_or("Unknown"))
+            );
         }
-        let mut response = (StatusCode::INTERNAL_SERVER_ERROR, Json(result_json.clone())).into_response();
-        if !server_timing.is_empty() {
-            response.headers_mut().insert("Server-Timing", server_timing.parse().unwrap());
-        }
+        let response = (StatusCode::INTERNAL_SERVER_ERROR, Json(result_json)).into_response();
         return response;
     }
 
     // --- Response construction ---
     let mut response = if let Some(is_resp) = result_json.get("_isResponse") {
         if is_resp.as_bool().unwrap_or(false) {
-            let status_u16 = result_json.get("status").and_then(|v| v.as_u64()).unwrap_or(200) as u16;
+            let status_u16 = result_json
+                .get("status")
+                .and_then(|v| v.as_u64())
+                .unwrap_or(200) as u16;
             let status = StatusCode::from_u16(status_u16).unwrap_or(StatusCode::OK);
             let mut builder = axum::http::Response::builder().status(status);
 
@@ -277,8 +306,12 @@ async fn handler(
             if let Some(location) = result_json.get("redirect") {
                 if let Some(url) = location.as_str() {
                     let mut final_status_u16 = status.as_u16();
-                    if !(300..400).contains(&final_status_u16) { final_status_u16 = 302; }
-                    builder = builder.status(StatusCode::from_u16(final_status_u16).unwrap_or(StatusCode::FOUND)).header("Location", url);
+                    if !(300..400).contains(&final_status_u16) {
+                        final_status_u16 = 302;
+                    }
+                    builder = builder
+                        .status(StatusCode::from_u16(final_status_u16).unwrap_or(StatusCode::FOUND))
+                        .header("Location", url);
                     is_redirect = true;
                 }
             }
@@ -294,33 +327,68 @@ async fn handler(
             };
             builder.body(Body::from(body_text)).unwrap()
         } else {
-            Json(result_json.clone()).into_response()
+            Json(result_json).into_response()
         }
     } else {
-        Json(result_json.clone()).into_response()
+        Json(result_json).into_response()
     };
 
-    if !server_timing.is_empty() {
-        response.headers_mut().insert("Server-Timing", server_timing.parse().unwrap());
+    // --- Server-Timing header (only outside benchmark mode) ---
+    if !state.benchmark_mode && !timings.is_empty() {
+        let server_timing = timings
+            .iter()
+            .enumerate()
+            .map(|(i, (name, duration))| format!("{}_{};dur={:.2}", name, i, duration))
+            .collect::<Vec<_>>()
+            .join(", ");
+        response
+            .headers_mut()
+            .insert("Server-Timing", server_timing.parse().unwrap());
     }
 
     // --- Logging ---
     if log_enabled {
         let total_elapsed = start.elapsed();
         let total_elapsed_ms = total_elapsed.as_secs_f64() * 1000.0;
-        let total_drift_ms: f64 = timings.iter().filter(|(n, _)| n == "drift" || n == "drift_error").map(|(_, d)| d).sum();
+        let total_drift_ms: f64 = timings
+            .iter()
+            .filter(|(n, _)| n == "drift" || n == "drift_error")
+            .map(|(_, d)| d)
+            .sum();
         let compute_ms = (total_elapsed_ms - total_drift_ms).max(0.0);
 
-        let prefix = if !timings.is_empty() { format!("{} {}", blue("[Titan"), blue("Drift]")) } else { blue("[Titan]").to_string() };
+        let prefix = if !timings.is_empty() {
+            format!("{} {}", blue("[Titan"), blue("Drift]"))
+        } else {
+            blue("[Titan]").to_string()
+        };
         let timing_info = if !timings.is_empty() {
-            gray(&format!("(active: {:.2}ms, drift: {:.2}ms) in {:.2?}", compute_ms, total_drift_ms, total_elapsed))
+            gray(&format!(
+                "(active: {:.2}ms, drift: {:.2}ms) in {:.2?}",
+                compute_ms, total_drift_ms, total_elapsed
+            ))
         } else {
             gray(&format!("in {:.2?}", total_elapsed))
         };
 
         match route_kind {
-            "dynamic" => println!("{} {} {} {} {} {}", prefix, green(&format!("{} {}", method, path)), white("→"), green(&route_label), white("(dynamic)"), timing_info),
-            "exact" => println!("{} {} {} {} {}", prefix, white(&format!("{} {}", method, path)), white("→"), yellow(&route_label), timing_info),
+            "dynamic" => println!(
+                "{} {} {} {} {} {}",
+                prefix,
+                green(&format!("{} {}", method, path)),
+                white("→"),
+                green(&route_label),
+                white("(dynamic)"),
+                timing_info
+            ),
+            "exact" => println!(
+                "{} {} {} {} {}",
+                prefix,
+                white(&format!("{} {}", method, path)),
+                white("→"),
+                yellow(&route_label),
+                timing_info
+            ),
             _ => {}
         }
     }
@@ -430,7 +498,11 @@ async fn main() -> Result<()> {
         port,
         threads,
         stack_mb,
-        if benchmark_mode { ", Benchmark Mode" } else { "" }
+        if benchmark_mode {
+            ", Benchmark Mode"
+        } else {
+            ""
+        }
     );
 
     axum::serve(listener, app).await?;

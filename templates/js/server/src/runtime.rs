@@ -92,7 +92,7 @@ impl RuntimeManager {
         // --- Create worker channels ---
         // Capacity 32: keeps queue shallow for lower latency.
         // Work-stealing in execute() handles overflow.
-        let channel_capacity = 32;
+        let channel_capacity = 256;
         let mut workers = Vec::with_capacity(num_threads);
 
         let mut channels: Vec<(Sender<WorkerCommand>, crossbeam::channel::Receiver<WorkerCommand>)> =
