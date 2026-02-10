@@ -363,15 +363,17 @@ fn parse_js_object_literal(s: &str) -> Option<serde_json::Value> {
         return None;
     }
 
-    let inner = &trimmed[1..trimmed.len() - 1].trim();
+    let inner = trimmed[1..trimmed.len() - 1].trim();
     if inner.is_empty() {
         return Some(serde_json::json!({}));
     }
 
     let mut map = serde_json::Map::new();
 
-    // Split by comma (simple - doesn't handle nested objects or strings with commas)
-    for pair in inner.split(',') {
+    // Split by commas, but respect quoted strings (handles "Hello, World!" etc.)
+    let pairs = split_respecting_quotes(inner);
+
+    for pair in pairs {
         let pair = pair.trim();
         if pair.is_empty() {
             continue;
@@ -412,6 +414,46 @@ fn parse_js_object_literal(s: &str) -> Option<serde_json::Value> {
     }
 
     Some(serde_json::Value::Object(map))
+}
+
+/// Split a string by commas, but ignore commas inside quoted strings.
+/// Handles both double and single quotes, and escaped quotes.
+fn split_respecting_quotes(s: &str) -> Vec<&str> {
+    let mut parts = Vec::new();
+    let mut start = 0;
+    let mut in_double = false;
+    let mut in_single = false;
+    let mut prev_was_escape = false;
+    let bytes = s.as_bytes();
+
+    for i in 0..bytes.len() {
+        if prev_was_escape {
+            prev_was_escape = false;
+            continue;
+        }
+        match bytes[i] {
+            b'\\' => {
+                prev_was_escape = true;
+            }
+            b'"' if !in_single => {
+                in_double = !in_double;
+            }
+            b'\'' if !in_double => {
+                in_single = !in_single;
+            }
+            b',' if !in_double && !in_single => {
+                parts.push(&s[start..i]);
+                start = i + 1;
+            }
+            _ => {}
+        }
+    }
+
+    if start < s.len() {
+        parts.push(&s[start..]);
+    }
+
+    parts
 }
 
 // =============================================================================
