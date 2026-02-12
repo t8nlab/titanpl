@@ -135,8 +135,8 @@ async function startRustServer(retryCount = 0) {
 
     serverProcess = spawn("cargo", ["run", "--quiet"], {
         cwd: serverPath,
-        stdio: ["ignore", "pipe", "pipe"], // Capture stderr to detect port conflicts
-        env: { ...process.env, CARGO_INCREMENTAL: "1" }
+        stdio: ["ignore", "pipe", "pipe"],
+        env: { ...process.env, CARGO_INCREMENTAL: "1", TITAN_DEV: "1" }
     });
 
     serverProcess.on("error", (err) => {
