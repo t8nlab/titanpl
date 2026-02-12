@@ -59,7 +59,7 @@ struct AppState {
     /// Pre-serialized responses for reply routes (no re-serialization per request)
     precomputed: Arc<HashMap<String, PrecomputedRoute>>,
     /// When true: disable per-request logging and timings injection
-    benchmark_mode: bool,
+    production_mode: bool,
 }
 
 // =============================================================================
@@ -120,7 +120,7 @@ async fn handler(State(state): State<AppState>, req: Request<Body>) -> impl Into
     // Only reached for actions that actually need V8 execution.
 
     let start = Instant::now();
-    let log_enabled = !state.benchmark_mode;
+    let log_enabled = !state.production_mode;
 
     // --- Query parsing ---
     let query_pairs: Vec<(String, String)> = req
@@ -334,7 +334,7 @@ async fn handler(State(state): State<AppState>, req: Request<Body>) -> impl Into
     };
 
     // --- Server-Timing header (only outside benchmark mode) ---
-    if !state.benchmark_mode && !timings.is_empty() {
+    if !state.production_mode && !timings.is_empty() {
         let server_timing = timings
             .iter()
             .enumerate()
@@ -405,8 +405,7 @@ async fn main() -> Result<()> {
     dotenvy::dotenv().ok();
 
     // --- Configuration ---
-    let benchmark_mode = std::env::var("TITAN_BENCHMARK").unwrap_or_default() == "1"
-        || std::env::var("TITAN_PERF").unwrap_or_default() == "1";
+    let production_mode = std::env::var("TITAN_DEV").unwrap_or_default() != "1";
 
     let raw = fs::read_to_string("./routes.json").unwrap_or_else(|_| "{}".to_string());
     let json: Value = serde_json::from_str(&raw).unwrap_or_default();
@@ -482,7 +481,7 @@ async fn main() -> Result<()> {
         runtime: runtime_manager,
         fast_paths: Arc::new(fast_paths),
         precomputed: Arc::new(precomputed),
-        benchmark_mode,
+        production_mode,
     };
 
     // --- Router ---
@@ -498,11 +497,7 @@ async fn main() -> Result<()> {
         port,
         threads,
         stack_mb,
-        if benchmark_mode {
-            ", Benchmark Mode"
-        } else {
-            ""
-        }
+        if production_mode { "" } else { ", Dev Mode" }
     );
 
     axum::serve(listener, app).await?;

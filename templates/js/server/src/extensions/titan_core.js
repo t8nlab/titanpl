@@ -89,10 +89,45 @@ if (!globalThis.__TITAN_CORE_LOADED__) {
     }
 
     // -----------------------------
-    // Response API
+    // Response API (Dual-Signature)
     // -----------------------------
+    // Supports TWO calling conventions for compatibility with fast-path parser:
+    //
+    //   Positional (legacy):
+    //     t.response.json(data, 201, { "X-Custom": "val" })
+    //
+    //   Options object (preferred — matches fast-path syntax):
+    //     t.response.json(data, { status: 201, headers: { "X-Custom": "val" } })
+    //
+    // The fast-path scanner parses the source code and expects the options-object
+    // form. Using the positional form works at runtime but won't be detected by
+    // fast-path. The options-object form works in BOTH paths.
+    //
+    // Internal helper to normalize the second argument:
+    function _parseResponseOpts(secondArg, thirdArg) {
+        let status = 200;
+        let extraHeaders = {};
+
+        if (secondArg !== undefined && secondArg !== null && typeof secondArg === 'object') {
+            // Options object form: { status: N, headers: {...} }
+            status = secondArg.status || 200;
+            extraHeaders = secondArg.headers || {};
+            // Also merge thirdArg if provided (defensive)
+            if (thirdArg && typeof thirdArg === 'object') {
+                extraHeaders = { ...extraHeaders, ...thirdArg };
+            }
+        } else {
+            // Positional form: (status, extraHeaders)
+            status = secondArg || 200;
+            extraHeaders = thirdArg || {};
+        }
+
+        return { status, extraHeaders };
+    }
+
     const titanResponse = {
-        json(data, status = 200, extraHeaders = {}) {
+        json(data, second, third) {
+            const { status, extraHeaders } = _parseResponseOpts(second, third);
             return {
                 _isResponse: true,
                 status,
@@ -100,7 +135,8 @@ if (!globalThis.__TITAN_CORE_LOADED__) {
                 body: JSON.stringify(data)
             };
         },
-        text(data, status = 200, extraHeaders = {}) {
+        text(data, second, third) {
+            const { status, extraHeaders } = _parseResponseOpts(second, third);
             return {
                 _isResponse: true,
                 status,
@@ -108,7 +144,8 @@ if (!globalThis.__TITAN_CORE_LOADED__) {
                 body: String(data)
             };
         },
-        html(data, status = 200, extraHeaders = {}) {
+        html(data, second, third) {
+            const { status, extraHeaders } = _parseResponseOpts(second, third);
             return {
                 _isResponse: true,
                 status,
@@ -116,7 +153,11 @@ if (!globalThis.__TITAN_CORE_LOADED__) {
                 body: String(data)
             };
         },
-        redirect(url, status = 302, extraHeaders = {}) {
+        redirect(url, second, third) {
+            const { status: rawStatus, extraHeaders } = _parseResponseOpts(second, third);
+            // For redirects, default to 302 and ensure 3xx range
+            let status = rawStatus;
+            if (status < 300 || status >= 400) status = 302;
             return {
                 _isResponse: true,
                 status,

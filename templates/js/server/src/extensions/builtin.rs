@@ -185,12 +185,7 @@ fn native_read_sync(scope: &mut v8::HandleScope, args: v8::FunctionCallbackArgum
     let root = super::PROJECT_ROOT.get().cloned().unwrap_or_else(|| std::env::current_dir().unwrap_or_default());
     let joined = root.join(&path_str);
     
-    // Security Check
     if let Ok(target) = joined.canonicalize() {
-        // In Docker, /app/static/index.html vs /app
-        // Canonical paths might resolve symlinks. 
-        // We just ensure it's within root or a subdirectory.
-        // For simplicity in this fix, we trust canonicalize logic if it exists, otherwise strict join.
         if target.starts_with(&root.canonicalize().unwrap_or(root.clone())) {
             match std::fs::read_to_string(&target) {
                 Ok(content) => {
@@ -198,14 +193,6 @@ fn native_read_sync(scope: &mut v8::HandleScope, args: v8::FunctionCallbackArgum
                     retval.set(v8_content.into());
                 },
                 Err(e) => {
-                     // Return null or throw? Node's readFile throws. Titan types say return string.
-                     // The user's code: fs.readFile(...) || "Default"
-                     // This implies it might return undefined/null on failure?
-                     // Or maybe they expect it to succeed. 
-                     // Let's throw to be safe for debugging, or return null if not found?
-                     // "||" handles null/undefined usually.
-                     // But usually readFile throws if file not found.
-                     // Let's print error and return null to avoid crashing entire worker init if optional.
                      retval.set(v8::null(scope).into());
                 }
             }
@@ -213,7 +200,6 @@ fn native_read_sync(scope: &mut v8::HandleScope, args: v8::FunctionCallbackArgum
              retval.set(v8::null(scope).into());
         }
     } else {
-        // File doesn't exist usually
         retval.set(v8::null(scope).into());
     }
 }
@@ -226,7 +212,6 @@ fn native_read(scope: &mut v8::HandleScope, args: v8::FunctionCallbackArguments,
     }
     let path_str = v8_to_string(scope, path_val);
 
-    // Return Metadata (Non-blocking for drift)
     let obj = v8::Object::new(scope);
     let op_key = v8_str(scope, "__titanAsync");
     let op_val = v8::Boolean::new(scope, true);
@@ -463,10 +448,8 @@ fn native_db_connect(scope: &mut v8::HandleScope, args: v8::FunctionCallbackArgu
         return;
     }
 
-    // Test connection immediately
     match PgClient::connect(&conn_string, NoTls) {
         Ok(mut client) => {
-            // Store in pool
             let mut pool = DB_POOL.lock().unwrap();
             let map = pool.get_or_insert_with(HashMap::new);
             map.insert(conn_string.clone(), client);
@@ -477,15 +460,12 @@ fn native_db_connect(scope: &mut v8::HandleScope, args: v8::FunctionCallbackArgu
         }
     }
     
-    // Return a DB connection object with methods
     let db_conn_obj = v8::Object::new(scope);
     
-    // Store connection string in a hidden property
     let conn_key = v8_str(scope, "__conn_string");
     let conn_val = v8_str(scope, &conn_string);
     db_conn_obj.set(scope, conn_key.into(), conn_val.into());
     
-    // Add query method
     let query_fn = v8::Function::new(scope, native_db_query).unwrap();
     let query_key = v8_str(scope, "query");
     db_conn_obj.set(scope, query_key.into(), query_fn.into());
@@ -494,16 +474,13 @@ fn native_db_connect(scope: &mut v8::HandleScope, args: v8::FunctionCallbackArgu
 }
 
 fn native_db_query(scope: &mut v8::HandleScope, args: v8::FunctionCallbackArguments, mut retval: v8::ReturnValue) {
-    // Get 'this' context (the db connection object)
     let this = args.this();
     let this_obj = this.to_object(scope).unwrap();
     
-    // Retrieve connection string
     let conn_key = v8_str(scope, "__conn_string");
     let conn_val = this_obj.get(scope, conn_key.into()).unwrap();
     let conn_string = v8_to_string(scope, conn_val);
     
-    // Get query string
     let query = v8_to_string(scope, args.get(0));
     
     if query.is_empty() {
@@ -511,7 +488,6 @@ fn native_db_query(scope: &mut v8::HandleScope, args: v8::FunctionCallbackArgume
         return;
     }
 
-    // Return Metadata (Non-blocking)
     let obj = v8::Object::new(scope);
     let op_key = v8_str(scope, "__titanAsync");
     let op_val = v8::Boolean::new(scope, true);
@@ -641,7 +617,6 @@ fn parse_async_op(scope: &mut v8::HandleScope, op_val: v8::Local<v8::Value>) -> 
 fn native_drift_call(scope: &mut v8::HandleScope, mut args: v8::FunctionCallbackArguments, mut retval: v8::ReturnValue) {
     let runtime_ptr = unsafe { args.get_isolate() }.get_data(0) as *mut super::TitanRuntime;
     let runtime = unsafe { &mut *runtime_ptr };
-    // let isolate_id = runtime.id; // We can use runtime.id directly later
 
     let arg0 = args.get(0);
     
@@ -676,7 +651,6 @@ fn native_drift_call(scope: &mut v8::HandleScope, mut args: v8::FunctionCallback
     let runtime_ptr = unsafe { args.get_isolate() }.get_data(0) as *mut super::TitanRuntime;
     let runtime = unsafe { &mut *runtime_ptr };
     
-    // Extract request_id from globalThis.__titan_req.__titan_request_id
     let req_id = {
         let context = scope.get_current_context();
         let global = context.global(scope);
@@ -698,8 +672,6 @@ fn native_drift_call(scope: &mut v8::HandleScope, mut args: v8::FunctionCallback
     }
 
     // --- REPLAY CHECK ---
-    // If the result exists, return it immediately (Replay Phase)
-    // IMPORTANT: Use .get() not .remove() to allow multiple drifts in the same action
     if let Some(res) = runtime.completed_drifts.get(&drift_id) {
          let json_str = serde_json::to_string(res).unwrap_or_else(|_| "null".to_string());
          let v8_str = v8::String::new(scope, &json_str).unwrap();
@@ -714,7 +686,6 @@ fn native_drift_call(scope: &mut v8::HandleScope, mut args: v8::FunctionCallback
 
     let (tx, rx) = tokio::sync::oneshot::channel::<super::WorkerAsyncResult>();
     
-    // Send to global async executor
     let req = super::AsyncOpRequest {
         op: async_op,
         drift_id,
@@ -729,17 +700,11 @@ fn native_drift_call(scope: &mut v8::HandleScope, mut args: v8::FunctionCallback
          return;
     }
 
-    // --- SUSPENSION THROW ---
-    // We throw a specific exception to halt execution. The Runtime catches this, 
-    // frees the worker, and waits for the async result.
-    
-    // Trigger Tokio task completion handling in a separate bridge
     let tokio_handle = runtime.tokio_handle.clone();
     let worker_tx = runtime.worker_tx.clone();
     
     tokio_handle.spawn(async move {
         if let Ok(res) = rx.await {
-            // Signal the pool to RESUME (REPLAY) this specific isolate
             let _ = worker_tx.send(crate::runtime::WorkerCommand::Resume {
                 drift_id,
                 result: res,
@@ -750,10 +715,107 @@ fn native_drift_call(scope: &mut v8::HandleScope, mut args: v8::FunctionCallback
     throw(scope, "__SUSPEND__");
 }
 
+// =============================================================================
+// OPTIMIZED: native_finish_request — Direct V8 field extraction
+// =============================================================================
+//
+// Before: v8_to_json(scope, result_val) → calls v8::json::stringify on the
+//         ENTIRE response object, then serde_json::from_str to parse it back.
+//         For _isResponse objects, this is wasteful because:
+//         - body is already a JSON string (serialized in JS via JSON.stringify)
+//         - status is a simple number
+//         - headers is a flat object with ~2-3 keys
+//         Round-tripping all of this through stringify+parse costs ~2-3µs.
+//
+// After:  For _isResponse objects (the hot path), extract each field directly
+//         from V8 locals. Only falls back to v8_to_json for non-response objects.
+//         This eliminates the stringify+parse round-trip for the most common case.
+//
 fn native_finish_request(scope: &mut v8::HandleScope, mut args: v8::FunctionCallbackArguments, _retval: v8::ReturnValue) {
     let request_id = args.get(0).uint32_value(scope).unwrap_or(0);
     let result_val = args.get(1);
-    let json = super::v8_to_json(scope, result_val);
+
+    // --- OPTIMIZATION: Direct field extraction for _isResponse objects ---
+    let json = if result_val.is_object() {
+        let obj = result_val.to_object(scope).unwrap();
+        let is_resp_key = v8_str(scope, "_isResponse");
+        let is_response = obj
+            .get(scope, is_resp_key.into())
+            .map(|v| v.boolean_value(scope))
+            .unwrap_or(false);
+
+        if is_response {
+            // Hot path: extract fields directly without full stringify+parse.
+            // Each field extraction is a simple V8 property lookup + type check.
+            let mut map = serde_json::Map::with_capacity(5);
+            map.insert("_isResponse".into(), Value::Bool(true));
+
+            // status (number → u64)
+            let status_key = v8_str(scope, "status");
+            if let Some(s) = obj.get(scope, status_key.into()) {
+                if let Some(n) = s.number_value(scope) {
+                    map.insert(
+                        "status".into(),
+                        Value::Number(serde_json::Number::from(n as u64)),
+                    );
+                }
+            }
+
+            // body (already a JSON string from JS — extract as-is, no re-serialization)
+            let body_key = v8_str(scope, "body");
+            if let Some(b) = obj.get(scope, body_key.into()) {
+                if b.is_string() {
+                    let body_str = b.to_string(scope).unwrap().to_rust_string_lossy(scope);
+                    map.insert("body".into(), Value::String(body_str));
+                } else if !b.is_null_or_undefined() {
+                    // Non-string body (rare) — stringify it
+                    let body_str = v8_to_string(scope, b);
+                    map.insert("body".into(), Value::String(body_str));
+                }
+            }
+
+            // headers (flat object with ~2-3 keys typically)
+            let headers_key = v8_str(scope, "headers");
+            if let Some(h) = obj.get(scope, headers_key.into()) {
+                if h.is_object() {
+                    let h_obj = h.to_object(scope).unwrap();
+                    if let Some(keys) =
+                        h_obj.get_own_property_names(scope, Default::default())
+                    {
+                        let mut h_map = serde_json::Map::with_capacity(keys.length() as usize);
+                        for i in 0..keys.length() {
+                            if let Some(key) = keys.get_index(scope, i) {
+                                if let Some(val) = h_obj.get(scope, key) {
+                                    let k_str =
+                                        key.to_string(scope).unwrap().to_rust_string_lossy(scope);
+                                    let v_str =
+                                        val.to_string(scope).unwrap().to_rust_string_lossy(scope);
+                                    h_map.insert(k_str, Value::String(v_str));
+                                }
+                            }
+                        }
+                        map.insert("headers".into(), Value::Object(h_map));
+                    }
+                }
+            }
+
+            // redirect (optional string)
+            let redirect_key = v8_str(scope, "redirect");
+            if let Some(r) = obj.get(scope, redirect_key.into()) {
+                if r.is_string() {
+                    let url = r.to_string(scope).unwrap().to_rust_string_lossy(scope);
+                    map.insert("redirect".into(), Value::String(url));
+                }
+            }
+
+            Value::Object(map)
+        } else {
+            // Non-response object — use generic conversion (with v8::json::stringify)
+            super::v8_to_json(scope, result_val)
+        }
+    } else {
+        super::v8_to_json(scope, result_val)
+    };
 
     let runtime_ptr = unsafe { args.get_isolate() }.get_data(0) as *mut super::TitanRuntime;
     let runtime = unsafe { &mut *runtime_ptr };
@@ -799,7 +861,6 @@ pub async fn run_single_op(op: super::TitanAsyncOp) -> serde_json::Value {
             let root = super::PROJECT_ROOT.get().cloned().unwrap_or_else(|| std::env::current_dir().unwrap_or_default());
             let joined = root.join(&path);
             
-            // Basic security check
             if let Ok(target) = joined.canonicalize() {
                 if target.starts_with(&root.canonicalize().unwrap_or(root)) {
                     match std::fs::read_to_string(&target) {
