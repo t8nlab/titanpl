@@ -1,5 +1,20 @@
 # Changelog
 
+## [26.14.1] - 2026-02-13
+
+### 🚀 New Features
+
+#### **⚡ Fast Path: Static Action Bypass**
+
+Introduced a zero-overhead execution path for static actions, completely bypassing the V8 runtime.
+
+* **Mechanism**: Uses the OXC (Oxidation Compiler) to perform deep semantic analysis on bundled action files.
+* **Optimization**: Automatically detects if `t.response.json()`, `t.response.text()`, or `t.response.html()` arguments are compile-time constants.
+* **Result**: Actions identified as static are served directly from Rust with **zero V8 overhead**, achieving raw NGINX-like performance for static content.
+* **Transparency**: No code changes required. The optimization effectively "compiles" your JS action into a static HTTP response during startup.
+
+---
+
 ## [26.14.0] - 2026-02-04
 
 ### 🚀 Stabile and ready for production
