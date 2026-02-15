@@ -1,56 +1,84 @@
+<p align="center">
+  <a href="https://titan-docs-ez.vercel.app/" target="_blank">
+    <img src="https://i.ibb.co/VpBsTg6m/tpl-Logo.png" width="120" alt="TitanPl Logo" />
+  </a>
+</p>
 
-```
-████████╗██╗████████╗ █████╗ ███╗   ██╗   ██████╗  ██████╗ ██████╗  ██████╗
-╚══██╔══╝██║╚══██╔══╝██╔══██╗████╗  ██║   ╚════██╗██╔═████╗╚════██╗██╔════╝
-   ██║   ██║   ██║   ███████║██╔██╗ ██║    █████╔╝██║██╔██║ █████╔╝███████╗
-   ██║   ██║   ██║   ██╔══██║██║╚██╗██║   ██╔═══╝ ████╔╝██║██╔═══╝ ██═══██║
-   ██║   ██║   ██║   ██║  ██║██║ ╚████║   ███████╗╚██████╔╝███████╗███████║
-   ╚═╝   ╚═╝   ╚═╝   ╚═╝  ╚═╝╚═╝  ╚═══╝   ╚══════╝ ╚═════╝ ╚══════╝╚══════╝
-```
+<p align="center">
+   You write zero Rust. TitanPl handles routing, bundling, runtime execution, hot reload, and deployment — <br> all powered by <a href="https://rust-lang.org/">Rust</a> under the hood.
+</p>
 
-# Notice
+<p align="center">
+  <a href="https://www.npmjs.com/package/@ezetgalaxy/titan">
+    <img src="https://img.shields.io/npm/v/@ezetgalaxy/titan?style=for-the-badge&logo=npm&logoColor=white" />
+  </a>
 
-💙 **Enjoy development mode `titan dev`**
-💟 **Titan Planet docs:** https://titan-docs-ez.vercel.app/docs
-🚀 **CLI: `titan` is now the canonical command. `tit` remains supported as an alias.**
-🛡️ **Strict Mode:** Titan now enforces zero type errors before running.
-✅ **For text response from a action file use t.response.text("Hii TitanPl")
+  <img src="https://img.shields.io/badge/Runtime-Gravity(V8)%20%26%20Rust%20Tokio-1f2937?style=for-the-badge" />
 
----
+  <img src="https://img.shields.io/badge/Powered%20By%20Rust%20Axum-DEA584?style=for-the-badge&logo=rust&logoColor=black" />
 
-# TITAN PLANET 🚀
+  <a href="https://discord.gg/mPDaTRtP">
+    <img src="https://img.shields.io/badge/Join-5865F2?style=for-the-badge&logo=discord&logoColor=white" />
+  </a>
 
-[![npm version](https://img.shields.io/npm/v/@ezetgalaxy/titan.svg?style=flat-square)](https://www.npmjs.com/package/@ezetgalaxy/titan)
+  <a href="https://x.com/TitanPl">
+    <img src="https://img.shields.io/badge/Follow-000000?style=for-the-badge&logo=x&logoColor=white" />
+  </a>
 
+</p>
+
+
+
+
+<h1> Description
+</h1>
+
+Titan Planet is a JavaScript/TypeScript-first Backend Framework that compiles your application into a single, high-performance native binary. It embeds it's own Gravity (V8) JavaScript runtime directly into a specialized Rust + Axum server.
 
 **TypeScript Precision. JavaScript Simplicity. Native Rust Power. Zero Configuration.**
 
-Titan Planet is a **JavaScript/TypeScript-first Backend Framework** that compiles your application into a single, high-performance native binary. It embeds a V8 JavaScript runtime directly into a specialized Rust + Axum server.
+<p>
+   
+  <img src="https://img.shields.io/badge/TypeScript-3178C6?style=for-the-badge&logo=typescript&logoColor=white" />
+  <img src="https://img.shields.io/badge/JavaScript-F7DF1E?style=for-the-badge&logo=javascript&logoColor=black" />
+  <img src="https://img.shields.io/badge/Rust-DEA584?style=for-the-badge&logo=rust&logoColor=black" />
+</p>
 
-**Start with pure TypeScript/JavaScript.**
-**Need raw power? Add Rust actions seamlessly.**
-Titan handles the compilation, bundling, and routing automatically for both.
+  
+## Why Titan?
 
-Titan = **TS/JS productivity × Rust performance × Zero DevOps**
+Titan Planet compiles your JavaScript or TypeScript application into a **single native Rust binary**.
 
----
+It embeds a V8 runtime inside a Rust + Axum server — giving you:
 
-# 🌌 Why Titan?
+- ⚡ Native-level performance
+- 📦 Single binary deployment
+- 🧠 Strict TypeScript enforcement
+- 🛡 Zero type errors before runtime
+- 🚀 No DevOps configuration required
 
-| Feature                              | Titan | Express/Nest | FastAPI | Bun       |
-| ------------------------------------ | ----- | ------------ | ------- | --------- |
-| Native binary output                 | ✅ Yes | ❌ No         | ❌ No    | ❌ No      |
-| Hybrid Rust + JS/TS Actions          | ✅ Yes | ❌ No         | ❌ No    | ❌ No      |
-| Strict TypeScript Enforcement        | ✅ Yes | ❌ Setup Req. | ❌ No    | ❌ Partial |
-| Zero-config Docker deploy            | ✅ Yes | ❌ No         | ❌ No    | ❌ No      |
-| Action-based architecture            | ✅ Yes | ❌ No         | ❌ No    | ❌ No      |
-| Hot reload dev server                | ✅ Yes | ❌ No         | ❌ No    | ❌ No      |
-| Modular, Isolated Templates          | ✅ Yes | ❌ No         | ❌ No    | ❌ No      |
+Start with pure TypeScript.
+Drop into Rust when you need extreme performance.
+Titan handles the integration automatically.
 
----
+<p>
+  <a href="https://titan-docs-ez.vercel.app/docs" target="_blank">
+    <img src="https://i.ibb.co/VpBsTg6m/tpl-Logo.png" width="28" style="vertical-align:middle;" />
+    <strong style="vertical-align:middle;"> Documentation</strong>
+</p>
+<p>
+<a href="https://titan-docs-ez.vercel.app/docs/runtime-architecture" target="_blank">
+    <strong style="vertical-align:middle;">Gravity Runtime</strong>
+  </a>
+</p>
+  
+ <p>
+     <a href="https://titan-docs-ez.vercel.app/docs/14-drift" target="_blank">
+    <strong style="vertical-align:middle;">Drift</strong>
+  </a>
+ </p>
 
 # 🚀 Quick Start
-
 ### 1. Prerequisites
 * **Rust** (latest stable): [Install Rust](https://rust-lang.org/tools/install/)
 * **Node.js** (v18+): Required for CLI and JS tooling.
@@ -100,7 +128,6 @@ You'll see the Titan Dev Server spin up:
   • Your app is now orbiting Titan Planet
 ```
 
----
 
 # ⚡ Hybrid Action System
 
