@@ -1,20 +1,17 @@
-/**
- * Dev.js
- * Titan development server with hot reload
- * RULE: This file shows ONLY clean error messages - no raw logs, no stack traces
- */
-
 import chokidar from "chokidar";
 import { spawn, execSync } from "child_process";
 import path from "path";
 import { fileURLToPath } from "url";
 import fs from "fs";
+import esbuild from "esbuild";
 import { createRequire } from "module";
 
+// Required for __dirname in ES modules
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// Premium colors
+
+// Colors
 const cyan = (t) => `\x1b[36m${t}\x1b[0m`;
 const green = (t) => `\x1b[32m${t}\x1b[0m`;
 const yellow = (t) => `\x1b[33m${t}\x1b[0m`;
@@ -29,6 +26,7 @@ function getTitanVersion() {
         return JSON.parse(fs.readFileSync(pkgPath, "utf-8")).version;
     } catch (e) {
         try {
+            // Check levels up to find the framework root
             let cur = __dirname;
             for (let i = 0; i < 5; i++) {
                 const pkgPath = path.join(cur, "package.json");
@@ -41,6 +39,7 @@ function getTitanVersion() {
         } catch (e2) { }
 
         try {
+            // Fallback to calling tit --version
             const output = execSync("tit --version", { encoding: "utf-8" }).trim();
             const match = output.match(/v(\d+\.\d+\.\d+)/);
             if (match) return match[1];
@@ -112,8 +111,13 @@ function stopSpinner(success = true, text = "") {
 }
 
 async function startRustServer(retryCount = 0) {
-    const maxRetries = 3;
-    const waitTime = retryCount > 0 ? 500 : 200;
+    // If TS is broken, don't start
+    if (isTs && !isTsHealthy) {
+        stopSpinner(false, "Waiting for TypeScript errors to be fixed...");
+        return;
+    }
+
+    const waitTime = retryCount > 0 ? 1000 : 500;
 
     await killServer();
     await delay(waitTime);
@@ -125,22 +129,34 @@ async function startRustServer(retryCount = 0) {
 
     let isReady = false;
     let stdoutBuffer = "";
+    let buildLogs = "";
     let stderrBuffer = "";
 
+    // If it takes more than 30s, update the message
     const slowTimer = setTimeout(() => {
         if (!isReady && !isKilling) {
             startSpinner("Still stabilizing... (the first orbit takes longer)");
         }
-    }, 15000);
+    }, 30000);
 
     serverProcess = spawn("cargo", ["run", "--quiet"], {
         cwd: serverPath,
         stdio: ["ignore", "pipe", "pipe"],
-        env: { ...process.env, CARGO_INCREMENTAL: "1", TITAN_DEV: "1" }
+        env: { ...process.env, CARGO_INCREMENTAL: "1" }
     });
 
     serverProcess.on("error", (err) => {
-        stopSpinner(false, "Orbit stabilization failed");
+        stopSpinner(false, "Failed to start orbit");
+        console.error(red(`[Titan] Error: ${err.message}`));
+    });
+
+    serverProcess.stderr.on("data", (data) => {
+        const str = data.toString();
+        if (isReady) {
+            process.stderr.write(data);
+        } else {
+            buildLogs += str;
+        }
     });
 
     serverProcess.stdout.on("data", (data) => {
@@ -157,6 +173,7 @@ async function startRustServer(retryCount = 0) {
                     process.stdout.write(stdoutBuffer);
                     isFirstBoot = false;
                 } else {
+                    // On subsequent reloads, only print non-banner lines from the buffer
                     const lines = stdoutBuffer.split("\n");
                     for (const line of lines) {
                         const isBanner = line.includes("Titan server running") ||
@@ -231,11 +248,11 @@ async function startRustServer(retryCount = 0) {
 
             stopSpinner(false, "Orbit stabilization failed");
 
-            // // Debug: Show stderr if it's not empty and not a port error
-            // if (stderrBuffer && stderrBuffer.trim()) {
-            //     console.log(gray("\n[Debug] Cargo stderr:"));
-            //     console.log(gray(stderrBuffer.substring(0, 500))); // Show first 500 chars
-            // }
+            // Debug: Show stderr if it's not empty and not a port error
+            if (stderrBuffer && stderrBuffer.trim()) {
+                console.log(gray("\n[Debug] Cargo stderr:"));
+                console.log(gray(stderrBuffer.substring(0, 500))); // Show first 500 chars
+            }
 
             if (runTime < 15000 && retryCount < maxRetries) {
                 await delay(2000);
@@ -245,81 +262,108 @@ async function startRustServer(retryCount = 0) {
             }
         }
     });
+
 }
 
-function prepareRuntime() {
-    try {
-        const nm = path.join(process.cwd(), "node_modules");
-        const titanPkg = path.join(nm, "@titan");
-        const routePkg = path.join(titanPkg, "route");
-
-        if (!fs.existsSync(nm)) fs.mkdirSync(nm, { recursive: true });
-        if (!fs.existsSync(titanPkg)) fs.mkdirSync(titanPkg, { recursive: true });
-
-        if (!fs.existsSync(routePkg)) {
-            fs.mkdirSync(routePkg, { recursive: true });
-            fs.writeFileSync(path.join(routePkg, "package.json"), JSON.stringify({
-                name: "@titan/route",
-                main: "../../../titan/titan.js",
-                type: "module"
-            }, null, 2));
-        }
-    } catch (e) {
-        // Ignore errors
-    }
-}
-
-/**
- * Rebuild JS runtime
- * RULE: Only show "✖ Runtime preparation failed" on error
- * RULE: No raw logs, no stack traces, no console.error output
- */
 async function rebuild() {
+    if (isTs && !isTsHealthy) return; // Don't rebuild if TS is broken
+
     try {
-        // Execute app.js - pipe both stdout and stderr to capture and filter
-        const result = execSync("node app/app.js", {
-            encoding: "utf-8",
-            stdio: ["ignore", "pipe", "pipe"]
-        });
+        const root = process.cwd();
+        const appTs = path.join(root, "app", "app.ts");
+        const dotTitan = path.join(root, ".titan");
+        const compiledApp = path.join(dotTitan, "app.js");
 
-        // If succeeded, just print stdout (usually empty unless successful logs)
-        if (result) process.stdout.write(result);
-    } catch (e) {
-        stopSpinner(false, "Runtime preparation failed");
+        if (fs.existsSync(appTs)) {
+            if (!fs.existsSync(dotTitan)) fs.mkdirSync(dotTitan, { recursive: true });
 
-        // RULE: Search for the error box in the output and print ONLY that
-        // This removes Node.js version, stack traces, etc.
-        const output = (e.stdout || "") + (e.stderr || "");
+            await esbuild.build({
+                entryPoints: [appTs],
+                outfile: compiledApp,
+                bundle: true,
+                platform: "node",
+                format: "esm",
+                external: ["fs", "path", "esbuild", "chokidar", "typescript"],
+                logLevel: "silent"
+            });
 
-        // Find the box content - look for the start border (accounting for ANSI color)
-        // Match from the first ┌ up to the last ┘
-        const startIdx = output.indexOf('┌');
-        const endIdx = output.lastIndexOf('┘');
-
-        if (startIdx !== -1 && endIdx !== -1 && endIdx > startIdx) {
-            // Include potential ANSI codes before/after borders
-            let box = output.substring(startIdx - 5, endIdx + 1 + 5);
-            // Clean up to ensure we start/end at ANSI boundaries or borders
-            const realStart = box.indexOf('\x1b[31m┌');
-            const realEnd = box.lastIndexOf('┘\x1b[0m');
-
-            if (realStart !== -1 && realEnd !== -1) {
-                console.error("\n" + box.substring(realStart, realEnd + 5) + "\n");
-            } else {
-                // Fallback to simpler match
-                const simpleBox = output.substring(startIdx, endIdx + 1);
-                console.error("\n" + red(simpleBox) + "\n");
-            }
-        } else if (e.stderr && !e.stderr.includes("Node.js v")) {
-            console.error(red(e.stderr.trim()));
+            execSync(`node "${compiledApp}"`, { stdio: "inherit" });
+        } else {
+            execSync("node app/app.js", { stdio: "ignore" });
         }
-
-        throw e;
+    } catch (e) {
+        stopSpinner(false, "Failed to prepare runtime");
+        console.log(red(`[Titan] Error: ${e.message}`));
     }
 }
+
+let tsProcess = null;
+let isTsHealthy = false; // STRICT: Assume unhealthy until checked
+
+function startTypeChecker() {
+    const root = process.cwd();
+    if (!fs.existsSync(path.join(root, "tsconfig.json"))) return;
+
+    let tscPath;
+    try {
+        const require = createRequire(import.meta.url);
+        tscPath = require.resolve("typescript/bin/tsc");
+    } catch (e) {
+        tscPath = path.join(root, "node_modules", "typescript", "bin", "tsc");
+    }
+
+    if (!fs.existsSync(tscPath)) {
+        return;
+    }
+
+    const args = [tscPath, "--noEmit", "--watch", "--preserveWatchOutput", "--pretty"];
+
+    tsProcess = spawn(process.execPath, args, {
+        cwd: root,
+        stdio: "pipe",
+        shell: false
+    });
+
+    tsProcess.stdout.on("data", (data) => {
+        const lines = data.toString().split("\n");
+        for (const line of lines) {
+            if (line.trim().includes("File change detected") || line.trim().includes("Starting compilation")) {
+                isTsHealthy = false;
+                continue;
+            }
+            if (line.includes("Found 0 errors")) {
+                isTsHealthy = true;
+                // TS is happy, so we rebuild and restart (or start) the server
+                rebuild().then(startRustServer);
+
+            } else if (line.includes("error TS")) {
+                isTsHealthy = false;
+                if (serverProcess) {
+                    console.log(red(`[Titan] TypeScript error detected. Stopping server...`));
+                    killServer();
+                }
+                process.stdout.write(line + "\n");
+            } else if (line.match(/Found [1-9]\d* error/)) {
+                isTsHealthy = false;
+                if (serverProcess) {
+                    console.log(red(`[Titan] TypeScript compilation failed. Stopping server...`));
+                    killServer();
+                }
+                process.stdout.write(line + "\n");
+            } else if (line.trim()) {
+                process.stdout.write(gray(`[TS] ${line}\n`));
+            }
+        }
+    });
+
+    tsProcess.stderr.on("data", (data) => {
+        process.stdout.write(data);
+    });
+}
+
+let isTs = false;
 
 async function startDev() {
-    prepareRuntime();
     const root = process.cwd();
     const actionsDir = path.join(root, "app", "actions");
     let hasRust = false;
@@ -327,7 +371,7 @@ async function startDev() {
         hasRust = fs.readdirSync(actionsDir).some(f => f.endsWith(".rs"));
     }
 
-    const isTs = fs.existsSync(path.join(root, "tsconfig.json")) ||
+    isTs = fs.existsSync(path.join(root, "tsconfig.json")) ||
         fs.existsSync(path.join(root, "app", "app.ts"));
 
     let mode = "";
@@ -340,7 +384,7 @@ async function startDev() {
 
     console.clear();
     console.log("");
-    console.log(`  ${bold(cyan("⏣ Titan Planet"))}     ${gray("v" + version)}    ${yellow("[ Dev Mode ]")}`);
+    console.log(`  ${bold(cyan("⏣ Titan Planet"))}   ${gray("v" + version)}   ${yellow("[ Dev Mode ]")}`);
     console.log("");
     console.log(`  ${gray("Type:       ")} ${mode}`);
     console.log(`  ${gray("Hot Reload: ")} ${green("Enabled")}`);
@@ -350,11 +394,15 @@ async function startDev() {
     }
     console.log("");
 
-    try {
-        await rebuild();
-        await startRustServer();
-    } catch (e) {
-        console.log(gray("\n[Titan] Waiting for changes to retry..."));
+    if (isTs) {
+        startTypeChecker();
+    } else {
+        // If no TS, start immediately
+        try {
+            await rebuild();
+            await startRustServer();
+        } catch (e) {
+        }
     }
 
     const watcher = chokidar.watch(["app", ".env"], {
@@ -366,12 +414,21 @@ async function startDev() {
     watcher.on("all", async (event, file) => {
         if (timer) clearTimeout(timer);
         timer = setTimeout(async () => {
+            // If TS, we rely on TCS to trigger the rebuild (via Found 0 errors)
+            // We verify path safety using absolute/relative calculations
+            const relPath = path.relative(root, file);
+            if (isTs && (relPath.startsWith("app") || relPath.startsWith("app" + path.sep))) return;
+
+            // If TS is broken, rebuild() checks will prevent update, keeping server dead
+            // If TS is healthy, we proceed
+            if (isTs && !isTsHealthy) return;
+
             try {
                 await killServer();
                 await rebuild();
                 await startRustServer();
             } catch (e) {
-                console.log(gray("\n[Titan] Waiting for changes to retry..."));
+                // console.log(red("[Titan] Build failed -- waiting for changes..."));
             }
         }, 300);
     });
@@ -381,6 +438,13 @@ async function handleExit() {
     stopSpinner();
     console.log(gray("\n[Titan] Stopping server..."));
     await killServer();
+    if (tsProcess) {
+        if (process.platform === "win32") {
+            try { execSync(`taskkill /pid ${tsProcess.pid} /f /t`, { stdio: 'ignore' }); } catch (e) { }
+        } else {
+            tsProcess.kill();
+        }
+    }
     process.exit(0);
 }
 

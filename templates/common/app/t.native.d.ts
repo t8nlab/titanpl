@@ -1058,6 +1058,8 @@ declare global {
          * @see https://titan-docs-ez.vercel.app/docs/10-extensions — Extensions documentation
          */
         [key: string]: any;
+
+
     }
 
     /**
@@ -1978,6 +1980,64 @@ declare global {
         }
 
     }
+
+    /**
+ * Node-compatible `process` global (Titan Shim).
+ *
+ * This is a lightweight compatibility layer intended
+ * for supporting common Node libraries.
+ *
+ * Internally backed by:
+ * - t.proc
+ * - t.os
+ * - t.time
+ */
+    const process: {
+        /** Process ID */
+        pid: number;
+
+        /** Platform (linux, win32, darwin) */
+        platform: string;
+
+        /** CPU architecture */
+        arch: string;
+
+        /** Node version string (shimmed) */
+        version: string;
+
+        /** Version object */
+        versions: {
+            node: string;
+            titan: string;
+        };
+
+        /** Environment variables */
+        env: Record<string, string | undefined>;
+
+        /** CLI arguments */
+        argv: string[];
+
+        /** Current working directory */
+        cwd(): string;
+
+        /** Uptime in seconds */
+        uptime(): number;
+
+        /** High resolution time */
+        hrtime: {
+            (time?: [number, number]): [number, number];
+            bigint(): bigint;
+        };
+
+        /** Memory usage info */
+        memoryUsage(): Record<string, any>;
+
+        /** No-op event listener (compat only) */
+        on(event: string, listener: (...args: any[]) => void): void;
+
+        /** Exit stub (throws in Titan runtime) */
+        exit(code?: number): never;
+    };
 }
 
 export { };

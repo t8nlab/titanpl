@@ -3,6 +3,15 @@
  * Renders errors in a Next.js-style red terminal box
  */
 
+import fs from 'fs';
+import path from 'path';
+import { createRequire } from 'module';
+import { execSync } from 'child_process';
+import { fileURLToPath } from 'url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
 // Simple color function using ANSI escape codes
 const red = (text) => `\x1b[31m${text}\x1b[0m`;
 
@@ -176,7 +185,7 @@ export function renderErrorBox(errorInfo) {
     const topBorder = '┌' + '─'.repeat(boxWidth - 2) + '┐';
     const bottomBorder = '└' + '─'.repeat(boxWidth - 2) + '┘';
 
-   
+
     const boxLines = [
         red(topBorder),
         ...lines.map(line => {

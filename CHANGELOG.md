@@ -1,5 +1,19 @@
 # Changelog
 
+## [26.15.1] - 2026-02-21
+
+### 🔧 Node Compatibility Improvements
+
+#### **Improved Node Builtin Shim Support**
+Enhanced bundler-level Node.js compatibility to support more third-party libraries inside the Gravity runtime.
+
+* **Added**: Extended builtin rewrite map (`fs`, `path`, `os`, `crypto`, `process`, `util`, `node:*` variants).
+* **Improved**: Absolute path resolution in `titan-node-compat` plugin to satisfy esbuild namespace requirements.
+* **Added**: Stable `process` global shim (env, cwd, pid, hrtime.bigint support).
+* **Result**: Better compatibility with ecosystem libraries (e.g., logging, utilities, date libs) without requiring Node.js at runtime.
+
+---
+
 ## [26.15.0] - 2026-02-14
 
 ### 🚀 Performance & Stability

@@ -46,7 +46,7 @@ RUN mkdir -p /app/.ext && \
         rm -rf "/app/.ext/$pkg_name/node_modules"; \
     done
 
-RUN cd server && cargo build --release
+RUN titan build
 
 
 
