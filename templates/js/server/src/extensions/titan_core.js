@@ -54,10 +54,8 @@ if (!globalThis.__TITAN_CORE_LOADED__) {
         }
     };
 
-    // process.env
-    globalThis.process = {
-        env: t.loadEnv ? t.loadEnv() : {}
-    };
+    // Titan Environment API
+    t.env = t.loadEnv ? t.loadEnv() : {};
 
     // Async Proxy Creator
     function createAsyncOp(op) {
@@ -73,8 +71,7 @@ if (!globalThis.__TITAN_CORE_LOADED__) {
                 }
 
                 throw new Error(
-                    `[Titan Error] Accessed '${String(prop)}' without drift(). ` +
-                    `Fix: const res = drift(t.fetch(...));`
+                    `[Titan Error] Accessed '${String(prop)}' without drift(). `
                 );
             }
         });

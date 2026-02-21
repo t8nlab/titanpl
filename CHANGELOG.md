@@ -1,5 +1,14 @@
 # Changelog
 
+## [26.15.2] - 2026-02-14
+
+### 🚀 Performance & Stability
+#### **Stable Node Builtin Shim Support**
+Enhanced bundler-level Node.js compatibility to support more third-party libraries inside the Gravity runtime.
+
+
+---
+
 ## [26.15.1] - 2026-02-21
 
 ### 🔧 Node Compatibility Improvements
