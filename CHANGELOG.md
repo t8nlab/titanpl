@@ -1,6 +1,27 @@
 # Changelog
 
+## [26.15.4] - 2026-02-24
 
+### 🗄️ Database Engine Upgrade
+
+#### **Native PostgreSQL Pooling (Async via Drift)**
+Integrated a production-grade `deadpool-postgres` connection pool directly into the Titan runtime.
+
+- Global pooled connections via `OnceLock<Pool>`
+- Configurable `max` pool size
+- Fully compatible with Gravity’s deterministic drift model
+
+---
+
+### 🚀 Added
+
+#### **t.db.connect()**
+Stable database connection initializer:
+
+```js
+t.db.connect(process.env.DB_URI, { max: 10 })
+
+---
 
 ## [26.15.3] - 2026-02-14
 

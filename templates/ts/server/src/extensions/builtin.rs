@@ -17,9 +17,10 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use serde_json::Value;
 use jsonwebtoken::{encode, decode, Header, EncodingKey, DecodingKey, Validation};
 use bcrypt::{hash, verify, DEFAULT_COST};
-use postgres::{Client as PgClient, NoTls};
-use std::sync::{Mutex, OnceLock};
-use std::collections::{HashMap, BTreeMap};
+use std::sync::OnceLock;
+use deadpool_postgres::{Manager, Pool};
+use tokio_postgres::{NoTls, Config};
+
 
 use crate::utils::{blue, gray, red, parse_expires_in};
 use super::{TitanRuntime, v8_str, v8_to_string, throw, ShareContextStore};
@@ -27,7 +28,7 @@ use super::{TitanRuntime, v8_str, v8_to_string, throw, ShareContextStore};
 const TITAN_CORE_JS: &str = include_str!("titan_core.js");
 
 // Database connection pool
-static DB_POOL: Mutex<Option<HashMap<String, PgClient>>> = Mutex::new(None);
+static DB_POOL: OnceLock<Pool> = OnceLock::new();
 static HTTP_CLIENT: OnceLock<reqwest::Client> = OnceLock::new();
 
 fn get_http_client() -> &'static reqwest::Client {
@@ -450,74 +451,101 @@ fn native_define_action(_scope: &mut v8::HandleScope, args: v8::FunctionCallback
 }
 
 fn native_db_connect(scope: &mut v8::HandleScope, args: v8::FunctionCallbackArguments, mut retval: v8::ReturnValue) {
+
     let conn_string = v8_to_string(scope, args.get(0));
-    
+
     if conn_string.is_empty() {
-        throw(scope, "t.db.connect(): connection string is required");
+        throw(scope, "t.db.connect(): connection string required");
         return;
     }
 
-    match PgClient::connect(&conn_string, NoTls) {
-        Ok(mut client) => {
-            let mut pool = DB_POOL.lock().unwrap();
-            let map = pool.get_or_insert_with(HashMap::new);
-            map.insert(conn_string.clone(), client);
-        },
-        Err(e) => {
-            throw(scope, &format!("Database connection failed: {}", e));
-            return;
+    let mut max_size = 16;
+
+    if args.length() > 1 && args.get(1).is_object() {
+        let opts = args.get(1).to_object(scope).unwrap();
+        let max_key = v8_str(scope, "max");
+        if let Some(v) = opts.get(scope, max_key.into()) {
+            if let Some(n) = v.number_value(scope) {
+                max_size = n as usize;
+            }
         }
     }
+
+    if DB_POOL.get().is_none() {
+        let cfg: Config = conn_string.parse().unwrap();
+        let mgr = Manager::new(cfg, NoTls);
     
+        let pool = Pool::builder(mgr)
+            .max_size(max_size)
+            .build()
+            .unwrap();
+    
+        DB_POOL.set(pool).ok();
+    }
+
     let db_conn_obj = v8::Object::new(scope);
-    
-    let conn_key = v8_str(scope, "__conn_string");
-    let conn_val = v8_str(scope, &conn_string);
-    db_conn_obj.set(scope, conn_key.into(), conn_val.into());
-    
+
     let query_fn = v8::Function::new(scope, native_db_query).unwrap();
     let query_key = v8_str(scope, "query");
     db_conn_obj.set(scope, query_key.into(), query_fn.into());
-    
+
     retval.set(db_conn_obj.into());
 }
 
-fn native_db_query(scope: &mut v8::HandleScope, args: v8::FunctionCallbackArguments, mut retval: v8::ReturnValue) {
-    let this = args.this();
-    let this_obj = this.to_object(scope).unwrap();
-    
-    let conn_key = v8_str(scope, "__conn_string");
-    let conn_val = this_obj.get(scope, conn_key.into()).unwrap();
-    let conn_string = v8_to_string(scope, conn_val);
-    
-    let query = v8_to_string(scope, args.get(0));
-    
-    if query.is_empty() {
-        throw(scope, "db.query(): SQL query is required");
-        return;
+fn native_db_query(
+    scope: &mut v8::HandleScope,
+    args: v8::FunctionCallbackArguments,
+    mut retval: v8::ReturnValue,
+) {
+    let sql = v8_to_string(scope, args.get(0));
+
+    // Collect params
+    let mut params = Vec::new();
+    if args.length() > 1 && args.get(1).is_array() {
+        let arr = v8::Local::<v8::Array>::try_from(args.get(1)).unwrap();
+        for i in 0..arr.length() {
+            if let Some(v) = arr.get_index(scope, i) {
+                params.push(v8_to_string(scope, v));
+            }
+        }
     }
 
+    // Main async wrapper object
     let obj = v8::Object::new(scope);
-    let op_key = v8_str(scope, "__titanAsync");
-    let op_val = v8::Boolean::new(scope, true);
-    obj.set(scope, op_key.into(), op_val.into());
-    
+
+    let async_key = v8_str(scope, "__titanAsync");
+    let async_val = v8::Boolean::new(scope, true);
+    obj.set(scope, async_key.into(), async_val.into());
+
     let type_key = v8_str(scope, "type");
     let type_val = v8_str(scope, "db_query");
     obj.set(scope, type_key.into(), type_val.into());
-    
+
+    // Data object
     let data_obj = v8::Object::new(scope);
-    let conn_k = v8_str(scope, "conn");
-    let conn_v = v8_str(scope, &conn_string);
-    data_obj.set(scope, conn_k.into(), conn_v.into());
-    
-    let q_k = v8_str(scope, "query");
-    let q_v = v8_str(scope, &query);
-    data_obj.set(scope, q_k.into(), q_v.into());
-    
+
+    let conn_key = v8_str(scope, "conn");
+    let conn_val = v8_str(scope, "default");
+    data_obj.set(scope, conn_key.into(), conn_val.into());
+
+    let query_key = v8_str(scope, "query");
+    let query_val = v8_str(scope, &sql);
+    data_obj.set(scope, query_key.into(), query_val.into());
+
+    // Params array
+    let params_arr = v8::Array::new(scope, params.len() as i32);
+
+    for (i, p) in params.iter().enumerate() {
+        let param_val = v8_str(scope, p);
+        params_arr.set_index(scope, i as u32, param_val.into());
+    }
+
+    let params_key = v8_str(scope, "params");
+    data_obj.set(scope, params_key.into(), params_arr.into());
+
     let data_key = v8_str(scope, "data");
     obj.set(scope, data_key.into(), data_obj.into());
-    
+
     retval.set(obj.into());
 }
 
@@ -604,15 +632,35 @@ fn parse_async_op(scope: &mut v8::HandleScope, op_val: v8::Local<v8::Value>) -> 
             }
             Some(super::TitanAsyncOp::Fetch { url, method, body, headers })
         },
+
         "db_query" => {
-            let conn_key = v8_str(scope, "conn");
-            let conn_obj = data_obj.get(scope, conn_key.into())?;
-            let conn = v8_to_string(scope, conn_obj);
-            let query_key = v8_str(scope, "query");
-            let query_obj = data_obj.get(scope, query_key.into())?;
-            let query = v8_to_string(scope, query_obj);
-            Some(super::TitanAsyncOp::DbQuery { conn, query })
-        },
+
+    let conn_key = v8_str(scope, "conn");
+    let conn_val = data_obj.get(scope, conn_key.into())?;
+    let conn = v8_to_string(scope, conn_val);
+
+    let query_key = v8_str(scope, "query");
+    let query_val = data_obj.get(scope, query_key.into())?;
+    let query = v8_to_string(scope, query_val);
+
+    let params_key = v8_str(scope, "params");
+    let mut params = Vec::new();
+
+    if let Some(p_val) = data_obj.get(scope, params_key.into()) {
+        if p_val.is_array() {
+            let arr = v8::Local::<v8::Array>::try_from(p_val).unwrap();
+            for i in 0..arr.length() {
+                if let Some(v) = arr.get_index(scope, i) {
+                    params.push(v8_to_string(scope, v));
+                }
+            }
+        }
+    }
+
+    Some(super::TitanAsyncOp::DbQuery { conn, query, params })
+}
+
+
         "fs_read" => {
             let path_key = v8_str(scope, "path");
             let path_obj = data_obj.get(scope, path_key.into())?;
@@ -810,9 +858,15 @@ fn native_finish_request(scope: &mut v8::HandleScope, mut args: v8::FunctionCall
     }
 }
 
-pub fn run_async_operation(op: super::TitanAsyncOp) -> std::pin::Pin<Box<dyn std::future::Future<Output = serde_json::Value> + Send>> {
+pub fn run_async_operation(
+    op: super::TitanAsyncOp,
+) -> std::pin::Pin<Box<dyn std::future::Future<Output = serde_json::Value> + Send>> {
     Box::pin(async move {
         match op {
+
+            // =========================
+            // FETCH
+            // =========================
             super::TitanAsyncOp::Fetch {
                 url,
                 method,
@@ -820,107 +874,163 @@ pub fn run_async_operation(op: super::TitanAsyncOp) -> std::pin::Pin<Box<dyn std
                 headers,
             } => {
                 let client = get_http_client();
-                let m = reqwest::Method::from_bytes(method.as_bytes()).unwrap_or(reqwest::Method::GET);
-                
-                let mut req = client.request(m, &url);
-                
+
+                let method = reqwest::Method::from_bytes(method.as_bytes())
+                    .unwrap_or(reqwest::Method::GET);
+
+                let mut req = client.request(method, &url);
+
                 for (k, v) in headers {
                     req = req.header(k, v);
                 }
-                
+
                 if let Some(b) = body {
-                     req = req.body(b);
+                    req = req.body(b);
                 }
-                
+
                 match req.send().await {
                     Ok(resp) => {
-                         let status = resp.status().as_u16();
-                         let api_headers = resp.headers().clone();
-                         let text = resp.text().await.unwrap_or_default();
-                         
-                         let mut h_map = serde_json::Map::new();
-                         for (k, v) in api_headers.iter() {
-                             if let Ok(s) = v.to_str() {
-                                 h_map.insert(k.as_str().to_string(), serde_json::Value::String(s.to_string()));
-                             }
-                         }
-                         
-                         serde_json::json!({
-                             "_isResponse": true,
-                             "status": status,
-                             "body": text,
-                             "headers": h_map
-                         })
-                    },
-                    Err(e) => serde_json::json!({ "error": e.to_string() })
-                }
-            },
-            super::TitanAsyncOp::DbQuery { conn, query } => {
-                let conn_str = conn;
-                let query_str = query;
-                
-                let res = tokio::task::spawn_blocking(move || {
-                    let mut pool_guard = DB_POOL.lock().unwrap();
-                    if let Some(pool) = pool_guard.as_mut() {
-                        if let Some(client) = pool.get_mut(&conn_str) {
-                             match client.query(&query_str, &[]) {
-                                 Ok(rows) => {
-                                     let mut arr = Vec::new();
-                                     for row in rows {
-                                         let mut obj = serde_json::Map::new();
-                                         for (i, col) in row.columns().iter().enumerate() {
-                                              let name = col.name();
-                                              let val = if let Ok(v) = row.try_get::<_, String>(i) {
-                                                  serde_json::Value::String(v)
-                                              } else if let Ok(v) = row.try_get::<_, i32>(i) {
-                                                  serde_json::Value::Number(serde_json::Number::from(v))
-                                              } else if let Ok(v) = row.try_get::<_, bool>(i) {
-                                                  serde_json::Value::Bool(v)
-                                              } else {
-                                                  serde_json::Value::Null
-                                              };
-                                              obj.insert(name.to_string(), val);
-                                         }
-                                         arr.push(serde_json::Value::Object(obj));
-                                     }
-                                     Ok(serde_json::Value::Array(arr))
-                                 },
-                                 Err(e) => Err(e.to_string())
-                             }
-                        } else {
-                             Err("Connection not found".to_string())
+                        let status = resp.status().as_u16();
+                        let api_headers = resp.headers().clone();
+                        let text = resp.text().await.unwrap_or_default();
+
+                        let mut h_map = serde_json::Map::new();
+                        for (k, v) in api_headers.iter() {
+                            if let Ok(s) = v.to_str() {
+                                h_map.insert(
+                                    k.as_str().to_string(),
+                                    serde_json::Value::String(s.to_string()),
+                                );
+                            }
                         }
-                    } else {
-                        Err("Pool not initialized".to_string())
+
+                        serde_json::json!({
+                            "_isResponse": true,
+                            "status": status,
+                            "body": text,
+                            "headers": h_map
+                        })
                     }
-                }).await;
-                
-                match res {
-                    Ok(Ok(v)) => v,
-                    Ok(Err(s)) => serde_json::json!({ "error": s }),
-                    Err(e) => serde_json::json!({ "error": e.to_string() })
+                    Err(e) => serde_json::json!({ "error": e.to_string() }),
                 }
-            },
+            }
+
+            // =========================
+            // DB QUERY
+            // =========================
+            super::TitanAsyncOp::DbQuery { conn: _, query, params } => {
+
+                let pool = match DB_POOL.get() {
+                    Some(p) => p,
+                    None => {
+                        return serde_json::json!({
+                            "error": "DB pool not initialized"
+                        });
+                    }
+                };
+
+                match pool.get().await {
+                    Ok(client) => {
+
+                        let stmt = match client.prepare(&query).await {
+                            Ok(s) => s,
+                            Err(e) => {
+                                return serde_json::json!({
+                                    "error": e.to_string()
+                                });
+                            }
+                        };
+
+                        let param_refs: Vec<&(dyn tokio_postgres::types::ToSql + Sync)> =
+                            params.iter()
+                                .map(|p| p as &(dyn tokio_postgres::types::ToSql + Sync))
+                                .collect();
+
+                        match client.query(&stmt, &param_refs).await {
+                            Ok(rows) => {
+
+                                let mut result = Vec::new();
+
+                                for row in rows {
+                                    let mut obj = serde_json::Map::new();
+
+                                    for (i, col) in row.columns().iter().enumerate() {
+
+                                        let val =
+                                            if let Ok(v) = row.try_get::<_, String>(i) {
+                                                serde_json::Value::String(v)
+                                            } else if let Ok(v) = row.try_get::<_, i64>(i) {
+                                                serde_json::Value::Number(v.into())
+                                            } else if let Ok(v) = row.try_get::<_, i32>(i) {
+                                                serde_json::Value::Number(v.into())
+                                            } else if let Ok(v) = row.try_get::<_, bool>(i) {
+                                                serde_json::Value::Bool(v)
+                                            } else {
+                                                serde_json::Value::Null
+                                            };
+
+                                        obj.insert(col.name().to_string(), val);
+                                    }
+
+                                    result.push(serde_json::Value::Object(obj));
+                                }
+
+                                serde_json::Value::Array(result)
+                            }
+                            Err(e) => serde_json::json!({
+                                "error": e.to_string()
+                            }),
+                        }
+                    }
+                    Err(e) => serde_json::json!({
+                        "error": e.to_string()
+                    }),
+                }
+            }
+
+            // =========================
+            // FS READ
+            // =========================
             super::TitanAsyncOp::FsRead { path } => {
-                let root = super::PROJECT_ROOT.get().cloned().unwrap_or(std::path::PathBuf::from("."));
+
+                let root = super::PROJECT_ROOT
+                    .get()
+                    .cloned()
+                    .unwrap_or(std::path::PathBuf::from("."));
+
                 let target = root.join(&path);
-                
-                let safe = target.canonicalize().map(|p| p.starts_with(root.canonicalize().unwrap_or(root.clone()))).unwrap_or(false);
-                
+
+                let safe = target
+                    .canonicalize()
+                    .map(|p| {
+                        p.starts_with(
+                            root.canonicalize()
+                                .unwrap_or(root.clone())
+                        )
+                    })
+                    .unwrap_or(false);
+
                 if safe {
-                     match tokio::fs::read_to_string(target).await {
-                         Ok(c) => serde_json::json!({ "data": c }),
-                         Err(e) => serde_json::json!({ "error": e.to_string() })
-                     }
+                    match tokio::fs::read_to_string(target).await {
+                        Ok(c) => serde_json::json!({ "data": c }),
+                        Err(e) => serde_json::json!({ "error": e.to_string() }),
+                    }
                 } else {
-                     serde_json::json!({ "error": "Access denied" })
+                    serde_json::json!({ "error": "Access denied" })
                 }
-            },
+            }
+
+            // =========================
+            // BATCH
+            // =========================
             super::TitanAsyncOp::Batch(ops) => {
+
                 let mut res = Vec::new();
+
                 for op in ops {
                     res.push(run_async_operation(op).await);
                 }
+
                 serde_json::Value::Array(res)
             }
         }
