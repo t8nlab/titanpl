@@ -20,7 +20,7 @@ Stable database connection initializer:
 
 ```js
 t.db.connect(process.env.DB_URI, { max: 10 })
-
+```
 ---
 
 ## [26.15.3] - 2026-02-14
