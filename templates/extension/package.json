@@ -1,23 +1,26 @@
 {
-    "name": "{{name}}",
-    "version": "1.0.0",
-    "description": "A Titan Planet extension",
-    "main": "index.js",
-    "types": "index.d.ts",
-    "type": "commonjs",
-    "scripts": {
-        "test": "echo \"Error: no test specified\" && exit 1"
-    },
-    "keywords": [
-        "titan planet",
-        "extension"
-    ],
-    "author": "",
-    "license": "ISC",
-    "dependencies": {
-        "@titanpl/core": "^1.0.1",
-        "chokidar": "^5.0.0",
-        "esbuild": "^0.27.2",
-        "titanpl-sdk": "latest"
-    }
+  "name": "{{name}}",
+  "version": "2.0.1",
+  "description": "A Titan Planet extension",
+  "main": "index.js",
+  "types": "index.d.ts",
+  "type": "commonjs",
+  "scripts": {
+    "test": "microgravity test"
+  },
+  "keywords": [
+    "titan planet",
+    "extension"
+  ],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@titanpl/core": "latest",
+    "chokidar": "^5.0.0",
+    "esbuild": "^0.27.2",
+    "titanpl-sdk": "2.0.1"
+  },
+  "devDependencies": {
+    "@tgrv/microgravity": "latest"
+  }
 }

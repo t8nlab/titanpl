@@ -1,9 +1,16 @@
 # Node
 node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
 
-# Rust build
+# Rust build artifacts
 server/target/
 templates/*/server/target/
+engine/target/
+**/target/
+Cargo.lock
 
 # Titan build artifacts
 server/actions/*.jsbundle
@@ -15,16 +22,30 @@ templates/*/server/titan/*.jsbundle
 templates/*/server/routes.json
 templates/*/server/action_map.json
 templates/*/server/src/actions_rust/
+*.exe
+*.dll
+*.dylib
+*.so
 
-
+# Test apps & outputs
 test-apps/
+coverage/
+coverage-e2e/
+.nyc_output/
 
-
+# Env & Configs
 .env
-.vscode
+.env.local
+.vscode/
+.idea/
 mkctx/
 mkctx.config.json
-coverage/
-coverage-e2e
 
-build
+# Builds
+build/
+dist/
+*.tgz
+
+# OS Generate Files
+.DS_Store
+Thumbs.db

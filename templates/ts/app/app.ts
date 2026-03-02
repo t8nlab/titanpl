@@ -1,6 +1,6 @@
-import t from "@titan/route";
+import t from "@titanpl/route";
 
-t.post("/hello").action("hello") // pass a json payload { "name": "titan" }
+t.get("/user/:id<number>").action("getuser") // pass a json payload { "name": "titan" }
 
 t.get("/").reply("Ready to land on Titan Planet 🚀");
 

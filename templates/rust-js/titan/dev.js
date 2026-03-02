@@ -23,7 +23,7 @@ const bold = (t) => `\x1b[1m${t}\x1b[0m`;
 function getTitanVersion() {
     try {
         const require = createRequire(import.meta.url);
-        const pkgPath = require.resolve("@ezetgalaxy/titan/package.json");
+        const pkgPath = require.resolve("titanpl/package.json");
         return JSON.parse(fs.readFileSync(pkgPath, "utf-8")).version;
     } catch (e) {
         try {
@@ -33,7 +33,7 @@ function getTitanVersion() {
                 const pkgPath = path.join(cur, "package.json");
                 if (fs.existsSync(pkgPath)) {
                     const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf-8"));
-                    if (pkg.name === "@ezetgalaxy/titan") return pkg.version;
+                    if (pkg.name === "titanpl") return pkg.version;
                 }
                 cur = path.join(cur, "..");
             }

@@ -24,6 +24,8 @@ It provides the necessary **Type Definitions** to make your IDE understand the g
 
 > **Note:** The actual implementation of `t.log`, `t.fetch`, and other APIs are embedded directly into the [Titan Planet Binary](https://github.com/ezet-galaxy/titanpl). This SDK simply provides the "blueprints" (types) and a "sandbox" (test runner).
 
+**Important Note:** Currently, Titan Planet and its entire package ecosystem are only for Windows. The Linux version is in development (dev only) for the new architecture and will be launched later.
+
 ---
 
 ## ✨ Features

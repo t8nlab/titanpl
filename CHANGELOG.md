@@ -1,4 +1,66 @@
-# Changelog
+# Changelog - Titan Planet ⏣
+
+
+## [2.0.1] - 2026-03-02
+### 🚀 MAJOR RELEASE: Version 1.0.0 Reset
+We have reset the entire ecosystem version to 1.0.0 to provide a clean, stable foundation for the Titan Planet platform. All previous versions (v26.x.x) are now **deprecated**.
+
+### ✨ Added
+- **Premium Landing Page**: New projects now come with a beautiful, high-performance HTML landing page out of the box.
+- **Improved Orbit Collision Handling**: Better error messages and recommended actions when ports are already occupied.
+- **Recursive Template Substitution**: `titan init` and `titan create ext` now correctly substitute placeholders in all nested directories.
+- **Enhanced Path Resolution**: Native engine now correctly handles relative paths from within the V8 runtime.
+
+### 🔧 Fixed
+- **Engine Binary Loading**: Improved search logic for the Titan engine binary across monorepos and local installations.
+- **V8 Stack Management**: Optimized stack and memory allocation for worker threads.
+- **`ERR_MODULE_NOT_FOUND`**: Resolved module resolution issues in ESM-based CLI commands.
+- **Native Library Loading**: Fixed issues where native libraries would fail to load on Windows due to incorrect path resolution.
+
+### ⚠️ Deprecated
+- **Versions 26.0.0 through 26.17.2** are now considered deprecated. Users are strongly advised to migrate to **v1.0.0** for all Titan Planet packages.
+
+---
+*Orbiting at the edge of performance.*
+
+
+## [26.16.2] - 2026-03-01
+
+### ✨ Improvements & Branding Update
+- **Branding Update:** Transitioned from `@ezetgalaxy/titan` to `titanpl` branding across all packages and documentation.
+- **Enhanced Documentation:** Every package now includes a comprehensive `README.md` detailing "What it works" and "How it works".
+- **Windows-Only Note:** Explicitly documented Windows-only support in all major files, with Linux support noted as currently in development for the new engine architecture.
+- **Version Unified:** Unified versions across the monorepo for consistent distribution.
+- **Permanent Automation:** Created `scripts/publish.mjs` for automated version management and distribution.
+
+## [26.16.1] - 2026-03-01
+- Incremental fixes for CLI and Windows engine.
+
+## [26.16.0] - 2026-03-01
+
+### 🚀 Major Architecture Release: The Gravity Engine
+Titan Planet has officially transitioned from a local `server/` codebase to the **Global Gravity Engine Architecture**. 
+
+#### 🪐 What's New?
+- **No more local `server/` folder**: You no longer need to compile Rust locally or manage Cargo dependencies in your projects.
+- **Embedded Engine Binary**: The Titan Engine is now distributed directly via npm as `@titanpl/engine-<os>-<arch>`.
+- **Instant Server Startup**: Because the compiled engine is shipped via npm, `titan dev` and `titan start` no longer require lengthy Rust compilations.
+- **Pre-packaged Bundler**: Included `@titanpl/packet` handles all route discovery and JS bundling magically. 
+- **True Zero Config**: Pure JavaScript or TypeScript projects just run out of the box with `titan dev`.
+
+#### 🛤️ Migration Guide
+If you have an older Titan project (with a `server/` directory), you can seamlessly migrate to the new Engine:
+1. Ensure your `titanpl` CLI is updated to `26.16.0` globally or locally.
+2. In your project root, run **`titan migrate`**.
+3. The CLI will automatically back up any custom Rust extensions from your `server/` folder, delete the legacy Cargo workspace, and update your `package.json` to use the new Engine Architecture.
+4. Run `npm install`, then `titan dev`.
+
+#### 🔧 Internal Fixes & Polishes
+- Perfected `package.json` local dependencies and versions across all workspaces.
+- Added strict `.npmignore` configuration to ensure minimal package sizes when distributed via NPM.
+- Integrated `@tgrv/microgravity` into extension templates and Titan SDK testing setups for rapid extension development.
+- Updated root project `.gitignore` `CONTRIBUTING.md`.
+
 
 ## [26.15.4] - 2026-02-24
 

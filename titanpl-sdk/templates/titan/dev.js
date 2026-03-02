@@ -25,7 +25,7 @@ const bold = (t) => `\x1b[1m${t}\x1b[0m`;
 function getTitanVersion() {
     try {
         const require = createRequire(import.meta.url);
-        const pkgPath = require.resolve("@ezetgalaxy/titan/package.json");
+        const pkgPath = require.resolve("titanpl/package.json");
         return JSON.parse(fs.readFileSync(pkgPath, "utf-8")).version;
     } catch (e) {
         try {
@@ -34,7 +34,7 @@ function getTitanVersion() {
                 const pkgPath = path.join(cur, "package.json");
                 if (fs.existsSync(pkgPath)) {
                     const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf-8"));
-                    if (pkg.name === "@ezetgalaxy/titan") return pkg.version;
+                    if (pkg.name === "titanpl") return pkg.version;
                 }
                 cur = path.join(cur, "..");
             }
@@ -250,7 +250,7 @@ async function startRustServer(retryCount = 0) {
 function prepareRuntime() {
     try {
         const nm = path.join(process.cwd(), "node_modules");
-        const titanPkg = path.join(nm, "@titan");
+        const titanPkg = path.join(nm, "@titanpl");
         const routePkg = path.join(titanPkg, "route");
 
         if (!fs.existsSync(nm)) fs.mkdirSync(nm, { recursive: true });
@@ -259,7 +259,7 @@ function prepareRuntime() {
         if (!fs.existsSync(routePkg)) {
             fs.mkdirSync(routePkg, { recursive: true });
             fs.writeFileSync(path.join(routePkg, "package.json"), JSON.stringify({
-                name: "@titan/route",
+                name: "@titanpl/route",
                 main: "../../../titan/titan.js",
                 type: "module"
             }, null, 2));
