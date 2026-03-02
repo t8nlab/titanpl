@@ -1,6 +1,6 @@
 {
   "name": "{{name}}",
-  "version": "2.0.1",
+  "version": "2.0.2",
   "description": "A Titan Planet extension",
   "main": "index.js",
   "types": "index.d.ts",
@@ -18,7 +18,7 @@
     "@titanpl/core": "latest",
     "chokidar": "^5.0.0",
     "esbuild": "^0.27.2",
-    "titanpl-sdk": "2.0.1"
+    "titanpl-sdk": "2.0.2"
   },
   "devDependencies": {
     "@tgrv/microgravity": "latest"

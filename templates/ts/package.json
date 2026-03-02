@@ -6,12 +6,12 @@
     "template": "ts"
   },
   "dependencies": {
-    "@titanpl/cli": "2.0.1",
-    "@titanpl/route": "2.0.1",
-    "@titanpl/native": "2.0.1",
+    "@titanpl/cli": "2.0.2",
+    "@titanpl/route": "2.0.2",
+    "@titanpl/native": "2.0.2",
     "@titanpl/core": "latest",
     "@titanpl/node": "latest",
-    "@titanpl/packet": "2.0.1",
+    "@titanpl/packet": "2.0.2",
     "typescript": "^5.0.0"
   },
   "scripts": {
@@ -26,5 +26,5 @@
     "eslint-plugin-titanpl": "latest",
     "@typescript-eslint/parser": "^8.54.0"
   },
-  "version": "2.0.1"
+  "version": "2.0.2"
 }

@@ -87,22 +87,28 @@ async function killServer() {
     if (!serverProcess) return;
 
     return new Promise((resolve) => {
-        const onExit = () => {
+        if (serverProcess.killed || serverProcess.exitCode !== null) {
             serverProcess = null;
             resolve();
+            return;
+        }
+
+        let isDone = false;
+        const onExit = () => {
+            if (isDone) return;
+            isDone = true;
+            serverProcess = null;
+            setTimeout(resolve, 300); // Grace period for OS socket release
         };
 
         serverProcess.on('exit', onExit);
+        serverProcess.on('error', onExit);
 
-        if (os.platform() === 'win32') {
-            try {
-                execSync(`taskkill /pid ${serverProcess.pid} /f /t`, { stdio: 'ignore' });
-            } catch (e) { }
-        } else {
+        try {
             serverProcess.kill('SIGKILL');
-        }
+        } catch (e) { }
 
-        setTimeout(onExit, 500);
+        setTimeout(onExit, 800); // Fallback
     });
 }
 

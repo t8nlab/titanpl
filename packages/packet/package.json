@@ -1,6 +1,6 @@
 {
   "name": "@titanpl/packet",
-  "version": "2.0.1",
+  "version": "2.0.2",
   "description": "The bundler for TitanPl servers.",
   "keywords": [
     "bundler",

@@ -1,14 +1,14 @@
-# Titan Planet 🪐: Global Gravity Architecture
+# Titan Planet 🪐: Global Titan Architecture
 
 Welcome to the architectural overview of **Titan Planet**. 
 
-As of version `26.16.0`, Titan Planet has fundamentally evolved. We have transitioned from the **Legacy Architecture** (which required a localized Cargo project for every server) to the high-performance **Global Gravity Engine Architecture**.
+As of version `26.16.0`, Titan Planet has fundamentally evolved. We have transitioned from the **Legacy Architecture** (which required a localized Cargo project for every server) to the high-performance **Global Titan Engine Architecture**.
 
 This document outlines the core concepts, components, and workflows that make this architecture powerful, fast, and easy to use.
 
 ---
 
-## 🏗️ 1. The Global Gravity Engine Architecture
+## 🏗️ 1. The Global Titan Engine Architecture
 
 The most significant shift in Titan's architecture is the elimination of the local `server/` directory and its associated Rust project. Instead, Titan now relies on a pre-compiled, embedded binary engine distributed via npm.
 
@@ -84,7 +84,7 @@ Instead of writing Rust directly in the `server/` folder, you now write standalo
 2. **Develop:** Write your high-performance logic using standard Rust.
 3. **Compile:** Rust compiles this into a Dynamic Library.
 4. **Link:** In your `mkctx.config.json` or `titan.json`, specify the path to your compiled extension.
-5. **Execute:** At runtime, the Gravity Engine dynamically loads your `.dylib`/`.so`, making your native Rust functions instantly available in JavaScript via `t.ext.my_extension.my_function()`.
+5. **Execute:** At runtime, the Titan Engine dynamically loads your `.dylib`/`.so`, making your native Rust functions instantly available in JavaScript via `t.ext.my_extension.my_function()`.
 
 Because these are dynamically linked, they do not require recompiling the core Engine, keeping iteration speeds incredibly fast.
 

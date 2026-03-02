@@ -1,15 +1,15 @@
 {
   "name": "titanpl",
-  "version": "2.0.1",
+  "version": "2.0.2",
   "description": "A Titan Planet server (Rust + TypeScript)",
   "type": "module",
   "titan": {
     "template": "rust-ts"
   },
   "dependencies": {
-    "@titanpl/cli": "2.0.1",
-    "@titanpl/route": "2.0.1",
-    "@titanpl/native": "2.0.1",
+    "@titanpl/cli": "2.0.2",
+    "@titanpl/route": "2.0.2",
+    "@titanpl/native": "2.0.2",
     "@titanpl/core": "latest",
     "@titanpl/node": "latest",
     "typescript": "^5.0.0"

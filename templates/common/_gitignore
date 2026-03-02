@@ -6,7 +6,7 @@ yarn-error.log*
 package-lock.json
 yarn.lock
 
-# Titan Gravity Engine (Auto-generated - DO NOT COMMIT)
+# Titan Engine (Auto-generated - DO NOT COMMIT)
 dist/
 .titan/
 .ext/

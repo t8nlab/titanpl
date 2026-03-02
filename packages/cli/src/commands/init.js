@@ -96,11 +96,33 @@ export async function initCommand(projectName, templateName) {
     }
 
     const target = path.resolve(process.cwd(), projName);
-    const templateDir = path.resolve(__dirname, '..', '..', '..', '..', 'templates', selectedTemplate);
-    const commonDir = path.resolve(__dirname, '..', '..', '..', '..', 'templates', 'common');
+    let templateDir = path.resolve(__dirname, '..', '..', '..', '..', 'templates', selectedTemplate);
+    let commonDir = path.resolve(__dirname, '..', '..', '..', '..', 'templates', 'common');
+
+    // Robust monorepo/fallback template search: look upwards from cwd
+    if (!fs.existsSync(templateDir) || !fs.existsSync(commonDir)) {
+        let searchDir = process.cwd();
+        while (searchDir !== path.parse(searchDir).root) {
+            const potentialTemplateDir = path.join(searchDir, 'templates', selectedTemplate);
+            const potentialCommonDir = path.join(searchDir, 'templates', 'common');
+            if (fs.existsSync(potentialTemplateDir) && fs.existsSync(potentialCommonDir)) {
+                templateDir = potentialTemplateDir;
+                commonDir = potentialCommonDir;
+                break;
+            }
+            const sdkPotentialTemplateDir = path.join(searchDir, 'titanpl-sdk', 'templates', selectedTemplate);
+            const sdkPotentialCommonDir = path.join(searchDir, 'titanpl-sdk', 'templates', 'common');
+            if (fs.existsSync(sdkPotentialTemplateDir) && fs.existsSync(sdkPotentialCommonDir)) {
+                templateDir = sdkPotentialTemplateDir;
+                commonDir = sdkPotentialCommonDir;
+                break;
+            }
+            searchDir = path.dirname(searchDir);
+        }
+    }
 
     if (!fs.existsSync(templateDir) || !fs.existsSync(commonDir)) {
-        console.log(chalk.red(`✖ Error finding template paths.Are you in a valid Titan monorepo ? `));
+        console.log(chalk.red(`✖ Error finding template paths. Are you in a valid Titan monorepo?`));
         process.exit(1);
     }
 
