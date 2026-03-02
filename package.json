@@ -1,17 +1,23 @@
 {
-  "name": "@ezetgalaxy/titan",
-  "version": "26.15.4",
+  "name": "titanpl",
+  "version": "2.0.1",
   "description": "Titan Planet is a JavaScript-first backend framework that embeds JS actions into a Rust + Axum server and ships as a single native binary. Routes are compiled to static metadata; only actions run in the embedded JS runtime. No Node.js. No event loop in production.",
   "license": "ISC",
   "author": "ezetgalaxy",
   "type": "module",
   "main": "index.js",
   "bin": {
-    "tit": "./index.js",
-    "titan": "./index.js"
+    "tit": "./packages/cli/index.js",
+    "titan": "./packages/cli/index.js",
+    "t8n": "./packages/cli/index.js"
   },
+  "workspaces": [
+    "packages/*",
+    "testapp"
+  ],
   "files": [
     "index.js",
+    "packages/",
     "templates/",
     "titanpl-sdk",
     "README.md"
@@ -54,6 +60,7 @@
     "start": "cd build && node ../index.js start",
     "help": "cd build && node ../index.js help",
     "update": "cd build && node ../index.js update",
+    "publish": "node scripts/publish.mjs",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",

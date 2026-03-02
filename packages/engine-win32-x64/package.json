@@ -1,0 +1,10 @@
+{
+  "name": "@titanpl/engine-win32-x64",
+  "version": "2.0.1",
+  "os": [
+    "win32"
+  ],
+  "cpu": [
+    "x64"
+  ]
+}

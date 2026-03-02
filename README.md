@@ -9,8 +9,8 @@
 </p>
 
 <p align="center">
-  <a href="https://www.npmjs.com/package/@ezetgalaxy/titan">
-    <img src="https://img.shields.io/npm/v/@ezetgalaxy/titan?style=for-the-badge&logo=npm&logoColor=white" />
+  <a href="https://www.npmjs.com/package/titanpl">
+    <img src="https://img.shields.io/npm/v/titanpl?style=for-the-badge&logo=npm&logoColor=white" />
   </a>
 
   <img src="https://img.shields.io/badge/Runtime-Gravity(V8)%20%26%20Rust%20Tokio-1f2937?style=for-the-badge" />
@@ -84,8 +84,9 @@ Titan handles the integration automatically.
 * **Node.js** (v18+): Required for CLI and JS tooling.
 
 ### 2. Install CLI
+**The `titanpl` CLI is used to create and manage all your new projects and everything related to Titan.**
 ```bash
-npm install -g @ezetgalaxy/titan
+npm install -g @titanpl/cli@latest
 ```
 
 ### 3. Initialize & Run
@@ -103,29 +104,25 @@ titan init my-app
 1.  `Standard` (Pure JS/TS)
 2.  `Rust + JS/TS (Hybrid)` (High-performance native actions)
 
-This creates one of four isolated environments:
-*   **Standard JS:** Lightweight server, zero Rust overhead.
-*   **Standard TS:** Strict server, zero Rust overhead.
-*   **Hybrid JS:** Full Rust integration + JS flexibility.
-*   **Hybrid TS:** Full Rust integration + TS strictness.
-
 Inside your project:
 ```bash
 cd my-app
-titan dev
+npm run dev
 ```
 
 You'll see the Titan Dev Server spin up:
 ```
-  Titan Planet   v26.9.1   [ Dev Mode ]
+  ⏣ Titan Planet   v1.0.0   [ Dev Mode ]
 
-  Type:        Rust + TS Actions
+  Type:        TS Actions
   Hot Reload:  Enabled
-  Strict Mode: Active 🛡️
+  Env:         Loaded
 
-  • Preparing runtime... Done
-  • A new orbit is ready for your app in 0.9s
-  • Your app is now orbiting Titan Planet
+🚀 Starting Titan Engine...
+[Titan] 1 reply route(s) pre-computed
+Titan server running at: http://localhost:5100  (Threads: 32, Stack: 8MB, Dev Mode)
+
+
 ```
 
 
@@ -136,7 +133,7 @@ Titan is unique because it allows you to write endpoints in **JavaScript, TypeSc
 | Feature | Status | Notes |
 | :--- | :--- | :--- |
 | **Standard JavaScript** | ✅ Stable | Production Ready |
-| **Standard TypeScript** | 🚧 Beta | **Ready for Dev**, Production Under Testing |
+| **Standard TypeScript** | ✅ Stable | Production Ready |
 | **Rust + JS (Hybrid)** | 🧪 Experimental | **Dev Only**, Production Under Testing |
 | **Rust + TS (Hybrid)** | 🧪 Experimental | **Dev Only**, Production Under Testing |
 
@@ -144,7 +141,7 @@ Titan is unique because it allows you to write endpoints in **JavaScript, TypeSc
 Fully typed, strict, and auto-compiled.
 
 ```typescript
-import { defineAction } from "../../titan/titan";
+import { defineAction } from "@titanpl/native";
 
 interface HelloResponse {
     message: string;

@@ -6,14 +6,11 @@ npm-debug.log
 package-lock.json
 yarn.lock
 
-# Titan Runtime (Auto-generated - DO NOT COMMIT)
-titan/server-bin*
+# Titan Gravity Engine
+dist/
 .titan/
-server/routes.json
-server/action_map.json
-server/actions/
-server/titan/
-server/src/actions_rust/
+.ext/
+
 deploy/
 
 # Rust Build Artifacts
@@ -36,4 +33,3 @@ Thumbs.db
 .idea/
 *.swp
 *.swo
-

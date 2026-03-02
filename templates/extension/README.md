@@ -63,3 +63,7 @@ If your extension requires native performance or system access, use the `native/
 1. Define functions in `native/src/lib.rs`.
 2. Map them in `titan.json`.
 3. Call them from `index.js` using `Titan.native.invoke(...)` (or the helper provided in the template).
+
+---
+
+**Important Note:** Currently, Titan Planet and its entire package ecosystem are only for Windows. The Linux version is in development (dev only) for the new architecture and will be launched later.

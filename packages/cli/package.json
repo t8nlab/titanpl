@@ -1,0 +1,34 @@
+{
+  "name": "@titanpl/cli",
+  "version": "2.0.1",
+  "description": "The unified CLI for Titan Planet. Use it to create, manage, build, and deploy high-performance backend projects.",
+  "keywords": [
+    "titanpl",
+    "titan",
+    "ezetgalaxy",
+    "cli"
+  ],
+  "license": "ISC",
+  "author": "ezetgalaxy",
+  "type": "module",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "bin": {
+    "titan": "./index.js",
+    "titanpl": "./index.js",
+    "tit": "./index.js"
+  },
+  "optionalDependencies": {
+    "@titanpl/engine-win32-x64": "2.0.1",
+    "@titanpl/engine-linux-x64": "2.0.1",
+    "@titanpl/engine-darwin-arm64": "2.0.1"
+  },
+  "dependencies": {
+    "@titanpl/packet": "2.0.1",
+    "prompts": "^2.4.2",
+    "commander": "^11.0.0",
+    "chalk": "^4.1.2"
+  }
+}

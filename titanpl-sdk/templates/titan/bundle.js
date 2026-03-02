@@ -68,7 +68,7 @@ const titanNodeCompatPlugin = {
  */
 function getTitanVersion() {
   try {
-    const pkgPath = require.resolve("@ezetgalaxy/titan/package.json");
+    const pkgPath = require.resolve("titanpl/package.json");
     return JSON.parse(fs.readFileSync(pkgPath, "utf-8")).version;
   } catch (e) {
     return "0.1.0";

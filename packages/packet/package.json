@@ -1,0 +1,23 @@
+{
+  "name": "@titanpl/packet",
+  "version": "2.0.1",
+  "description": "The bundler for TitanPl servers.",
+  "keywords": [
+    "bundler",
+    "titanpl",
+    "titan",
+    "ezetgalaxy"
+  ],
+  "license": "ISC",
+  "author": "ezetgalaxy",
+  "type": "module",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "dependencies": {
+    "esbuild": "^0.27.2",
+    "chokidar": "^5.0.0",
+    "typescript": "^5.0.0"
+  }
+}

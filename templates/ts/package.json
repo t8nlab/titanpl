@@ -1,16 +1,17 @@
 {
-  "name": "titanpl",
-  "version": "1.0.0",
+  "name": "{{name}}",
   "description": "A Titan Planet server (TypeScript)",
   "type": "module",
   "titan": {
     "template": "ts"
   },
   "dependencies": {
+    "@titanpl/cli": "2.0.1",
+    "@titanpl/route": "2.0.1",
+    "@titanpl/native": "2.0.1",
     "@titanpl/core": "latest",
     "@titanpl/node": "latest",
-    "chokidar": "^5.0.0",
-    "esbuild": "^0.27.2",
+    "@titanpl/packet": "2.0.1",
     "typescript": "^5.0.0"
   },
   "scripts": {
@@ -24,5 +25,6 @@
     "eslint": "^9.39.2",
     "eslint-plugin-titanpl": "latest",
     "@typescript-eslint/parser": "^8.54.0"
-  }
+  },
+  "version": "2.0.1"
 }

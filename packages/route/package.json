@@ -1,0 +1,22 @@
+{
+  "name": "@titanpl/route",
+  "version": "2.0.1",
+  "description": "Titan routing DSL",
+  "type": "module",
+  "main": "index.js",
+  "keywords": [
+    "titan",
+    "titanpl",
+    "t8n",
+    "route",
+    "dsl",
+    "ezetgalaxy"
+  ],
+  "types": "./index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./index.d.ts",
+      "default": "./index.js"
+    }
+  }
+}

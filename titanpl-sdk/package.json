@@ -1,37 +1,40 @@
 {
-    "name": "titanpl-sdk",
-    "version": "3.0.1",
-    "description": "Development SDK for Titan Planet. Provides TypeScript type definitions for the global 't' runtime object and a 'lite' test-harness runtime for building and verifying extensions.",
-    "main": "index.js",
-    "type": "module",
-    "types": "index.d.ts",
-    "bin": {
-        "titanpl-sdk": "./bin/run.js"
-    },
-    "files": [
-        "bin/",
-        "templates/",
-        "titan",
-        "assets",
-        "index.js",
-        "index.d.ts",
-        "README.md"
-    ],
-    "keywords": [
-        "titan",
-        "titan-planet",
-        "titanpl-sdk",
-        "ezetgalaxy",
-        "types",
-        "typescript",
-        "intellisense",
-        "sdk",
-        "backend-sdk",
-        "extension-development"
-    ],
-    "license": "ISC",
-    "dependencies": {
-        "@titanpl/core": "latest",
-        "@titanpl/node": "latest"
-    }
+  "name": "titanpl-sdk",
+  "version": "2.0.1",
+  "description": "Development SDK for Titan Planet. Provides TypeScript type definitions for the global 't' runtime object and a 'lite' test-harness runtime for building and verifying extensions.",
+  "main": "index.js",
+  "type": "module",
+  "types": "index.d.ts",
+  "bin": {
+    "titanpl-sdk": "./bin/run.js"
+  },
+  "files": [
+    "bin/",
+    "templates/",
+    "titan",
+    "assets",
+    "index.js",
+    "index.d.ts",
+    "README.md"
+  ],
+  "keywords": [
+    "titan",
+    "titan-planet",
+    "titanpl-sdk",
+    "ezetgalaxy",
+    "types",
+    "typescript",
+    "intellisense",
+    "sdk",
+    "backend-sdk",
+    "extension-development"
+  ],
+  "license": "ISC",
+  "dependencies": {
+    "@titanpl/core": "latest",
+    "@titanpl/node": "latest"
+  },
+  "devDependencies": {
+    "@tgrv/microgravity": "latest"
+  }
 }
