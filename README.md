@@ -80,7 +80,7 @@ Titan handles the integration automatically.
 
 # 🚀 Quick Start
 ### 1. Prerequisites
-* **Rust** (latest stable): [Install Rust](https://rust-lang.org/tools/install/)
+* **Rust** (latest stable): [Install Rust](https://rust-lang.org/tools/install/) [Optional]
 * **Node.js** (v18+): Required for CLI and JS tooling.
 
 ### 2. Install CLI
