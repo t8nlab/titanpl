@@ -26,6 +26,7 @@ templates/*/server/src/actions_rust/
 *.dll
 *.dylib
 *.so
+titan-server
 
 # Test apps & outputs
 test-apps/

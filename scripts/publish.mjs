@@ -111,7 +111,7 @@ for (const { dir, content } of packageJsons) {
         const arch = content.name.split('-')[2];
         const isWin = platform === 'win32';
         const binName = isWin ? 'titan-server.exe' : 'titan-server';
-        const srcPath = path.join(ROOT_DIR, 'engine', 'target', 'release', 'gravity' + (isWin ? '.exe' : ''));
+        const srcPath = path.join(ROOT_DIR, 'engine', 'target', 'release', 'titan-server' + (isWin ? '.exe' : ''));
         const destBinDir = path.join(dir, 'bin');
         const destPath = path.join(destBinDir, binName);
 
@@ -128,7 +128,7 @@ for (const { dir, content } of packageJsons) {
     console.log(`🚀 Publishing ${content.name}...`);
     console.log(`======================================`);
     try {
-        execSync('npm publish --access public --tag latest', { cwd: dir, stdio: 'inherit' });
+        execSync('npm publish --tag latest', { cwd: dir, stdio: 'inherit' });
         console.log(`✅ successfully published ${content.name} @ ${version}`);
     } catch (err) {
         console.error(`❌ Failed to publish ${content.name}`);
