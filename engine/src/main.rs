@@ -12,11 +12,14 @@ use anyhow::Result;
 use axum::{
     Router,
     body::{Body, to_bytes},
-    extract::State,
-    http::{Request, StatusCode},
+    extract::{State, FromRequestParts, Request as AxumRequest, ws::{WebSocketUpgrade, WebSocket, Message}},
+    http::{StatusCode, HeaderValue},
     response::{IntoResponse, Json},
     routing::any,
 };
+use dashmap::DashMap;
+use tokio::sync::mpsc;
+use futures_util::{StreamExt, SinkExt};
 use serde_json::Value;
 use smallvec::SmallVec;
 use std::time::Instant;
@@ -49,18 +52,20 @@ struct AppState {
     precomputed: Arc<HashMap<String, PrecomputedRoute>>,
     /// When true: disable per-request logging and timings injection
     production_mode: bool,
+    /// Active WebSocket channels
+    ws_sockets: Arc<DashMap<String, mpsc::UnboundedSender<Message>>>,
 }
 
-async fn root_route(state: State<AppState>, req: Request<Body>) -> impl IntoResponse {
+async fn root_route(state: State<AppState>, req: AxumRequest) -> impl IntoResponse {
     handler(state, req).await
 }
 
-async fn dynamic_route(state: State<AppState>, req: Request<Body>) -> impl IntoResponse {
+async fn dynamic_route(state: State<AppState>, req: AxumRequest) -> impl IntoResponse {
     handler(state, req).await
 }
 
 /// Main request handler — optimized with early fast-path bailout.
-async fn handler(State(state): State<AppState>, req: Request<Body>) -> impl IntoResponse {
+async fn handler(State(state): State<AppState>, req: AxumRequest) -> impl IntoResponse {
     let method = req.method().as_str().to_uppercase();
     let path = req.uri().path().to_string();
     let strict_key = format!("{}:{}", method, path);
@@ -77,6 +82,7 @@ async fn handler(State(state): State<AppState>, req: Request<Body>) -> impl Into
         .routes
         .get(&strict_key)
         .or_else(|| state.routes.get(&path))
+        .or_else(|| state.routes.get(&format!("WS:{}", path)))
     {
         match route.r#type.as_str() {
 
@@ -120,6 +126,31 @@ async fn handler(State(state): State<AppState>, req: Request<Body>) -> impl Into
                 if let Some(s) = route.value.as_str() {
                     return s.to_string().into_response();
                 }
+            }
+
+            // WebSocket routes
+            "websocket" => {
+                let (mut parts, _body) = req.into_parts();
+                let action_name = route.value.as_str().unwrap_or("").to_string();
+                let socket_id = uuid::Uuid::new_v4().to_string();
+                let state_clone = state.clone();
+
+                if log_enabled {
+                    println!(
+                        "{} {} {} {}",
+                        blue("[Titan]"),
+                        yellow(&format!("WS {}", path)),
+                        white("→ upgrade"),
+                        gray(&format!("(id: {})", socket_id))
+                    );
+                }
+
+                return match WebSocketUpgrade::from_request_parts(&mut parts, &state).await {
+                    Ok(ws_upgrade) => ws_upgrade.on_upgrade(move |socket| {
+                        handle_websocket(socket, socket_id, action_name, state_clone)
+                    }).into_response(),
+                    Err(rejection) => rejection.into_response(),
+                };
             }
 
             // Action routes (Fast path check)
@@ -208,7 +239,10 @@ async fn handler(State(state): State<AppState>, req: Request<Body>) -> impl Into
     let query_map: HashMap<String, String> = query_pairs.into_iter().collect();
 
     // Headers & Body
-    let (parts, body) = req.into_parts();
+    let (mut parts, body) = req.into_parts();
+    let _method_str = parts.method.as_str().to_uppercase();
+    let _path_str = parts.uri.path().to_string();
+    
     let headers_map: HashMap<String, String> = parts
         .headers
         .iter()
@@ -272,7 +306,30 @@ async fn handler(State(state): State<AppState>, req: Request<Body>) -> impl Into
             route_label = action.clone();
             action_name = Some(action);
             params = p;
+        } else {
+            // Try matching as a WebSocket route
+            if let Some((action, p)) =
+                match_dynamic_route("WS", &path, state.dynamic_routes.as_slice())
+            {
+                route_kind = "websocket_dynamic";
+                route_label = action.clone();
+                action_name = Some(action);
+                params = p;
+            }
         }
+    }
+
+    if route_kind == "websocket_dynamic" {
+        let socket_id = uuid::Uuid::new_v4().to_string();
+        let state_clone = state.clone();
+        let action_name = action_name.unwrap();
+
+        return match WebSocketUpgrade::from_request_parts(&mut parts, &state).await {
+            Ok(ws_upgrade) => ws_upgrade.on_upgrade(move |socket| {
+                handle_websocket(socket, socket_id, action_name, state_clone)
+            }).into_response(),
+            Err(rejection) => rejection.into_response(),
+        };
     }
 
     let action_name = match action_name {
@@ -409,7 +466,7 @@ async fn handler(State(state): State<AppState>, req: Request<Body>) -> impl Into
             .join(", ");
         response
             .headers_mut()
-            .insert("Server-Timing", server_timing.parse().unwrap());
+            .insert("Server-Timing", server_timing.parse().unwrap_or_else(|_| HeaderValue::from_static("")));
     }
 
     // Logging
@@ -555,7 +612,11 @@ async fn main() -> Result<()> {
         fast_paths: Arc::new(fast_paths),
         precomputed: Arc::new(precomputed),
         production_mode,
+        ws_sockets: Arc::new(DashMap::new()),
     };
+
+    // Initialize Global WS Channels (Must happen BEFORE state is moved into router)
+    extensions::WS_CHANNELS.get_or_init(|| state.ws_sockets.clone());
 
     // Router
     let app = Router::new()
@@ -575,6 +636,85 @@ async fn main() -> Result<()> {
 
     axum::serve(listener, app).await?;
     Ok(())
+}
+
+async fn handle_websocket(socket: WebSocket, id: String, action: String, state: AppState) {
+    let (tx, mut rx) = mpsc::unbounded_channel();
+    state.ws_sockets.insert(id.clone(), tx);
+
+    // Initial "open" event
+    let _ = state.runtime.execute(
+        action.clone(),
+        "WS".to_string(),
+        "/ws".to_string(), // placeholder
+        None,
+        smallvec::smallvec![
+            ("socketId".to_string(), id.clone()),
+            ("event".to_string(), "open".to_string())
+        ],
+        smallvec::smallvec![],
+        smallvec::smallvec![]
+    ).await;
+
+    let (mut sender, mut receiver) = socket.split();
+
+    let id_clone = id.clone();
+    let state_clone = state.clone();
+    let action_clone = action.clone();
+
+    // Task for sending messages out to the client
+    let mut send_task = tokio::spawn(async move {
+        while let Some(msg) = rx.recv().await {
+            if sender.send(msg).await.is_err() {
+                break;
+            }
+        }
+    });
+
+    // Task for receiving messages from the client and passing to V8
+    let mut recv_task = tokio::spawn(async move {
+        while let Some(Ok(msg)) = receiver.next().await {
+            match msg {
+                Message::Text(t) => {
+                    let _ = state_clone.runtime.execute(
+                        action_clone.clone(),
+                        "WS".to_string(),
+                        "/ws".to_string(),
+                        Some(bytes::Bytes::from(t)),
+                        smallvec::smallvec![
+                            ("socketId".to_string(), id_clone.clone()),
+                            ("event".to_string(), "message".to_string())
+                        ],
+                        smallvec::smallvec![],
+                        smallvec::smallvec![]
+                    ).await;
+                }
+                Message::Close(_) => break,
+                _ => {}
+            }
+        }
+    });
+
+    // Wait for either task to end
+    tokio::select! {
+        _ = (&mut send_task) => recv_task.abort(),
+        _ = (&mut recv_task) => send_task.abort(),
+    };
+
+    // Cleanup
+    state.ws_sockets.remove(&id);
+    let _ = state.runtime.execute(
+        action,
+        "WS".to_string(),
+        "/ws".to_string(),
+        None,
+        smallvec::smallvec![
+            ("socketId".to_string(), id),
+            ("event".to_string(), "close".to_string())
+        ],
+        smallvec::smallvec![],
+        smallvec::smallvec![]
+    ).await;
 }
 
 fn resolve_project_root() -> PathBuf {

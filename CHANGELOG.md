@@ -1,4 +1,24 @@
 # Changelog - Titan Planet ⏣
+## [6.0.0] - 2026-03-20
+### 🚀 MAJOR RELEASE: WebSocket Support & Production Stability
+This version introduces native, action-driven WebSockets and significant runtime refactoring, making Titan Planet more stable and capable for real-time applications.
+
+### ✨ Added
+- **Native WebSocket Support**: High-performance WebSocket routing via `t.ws()`.
+  - **Action-Driven Events**: Handle `open`, `message`, and `close` events directly within your standard Titan actions.
+  - **Real-time Messaging**: Send targeted messages using `t.ws.send(socketId, message)` or reach everyone with `t.ws.broadcast(message)`.
+  - **Socket Identification**: Automatic `socketId` generation and lifecycle management for every connection.
+
+
+### 🔧 Stability & Improvements
+- **Stabled Runtime**: Major internal refactoring of the Gravity Engine to ensure memory safety and predictable worker isolation.
+- **Hardened Action Pipeline**: Improved reliability of request/response bridging, especially for long-lived WebSocket connections.
+- **Optimized Binary Packaging**: Better handling of embedded assets and core JS runtime for faster cold starts.
+
+### 🧹 Internal
+- **Unified Ecosystem [6.0.0]**: Synchronized all Titan Planet packages to the 6.0.0 milestone.
+
+
 ## [2.0.3] - 2026-03-03
 ### 🚀 The Most Production Ready Stable Version
 - **Try out 2 new extensions for auth and rate limit `@t8n/iauth` and `@t8n/limit`** 

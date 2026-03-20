@@ -360,7 +360,9 @@ fn native_log(scope: &mut v8::HandleScope, args: v8::FunctionCallbackArguments, 
 
 fn native_jwt_sign(scope: &mut v8::HandleScope, args: v8::FunctionCallbackArguments, mut retval: v8::ReturnValue) {
     let payload_val = args.get(0);
-    let json_str = v8::json::stringify(scope, payload_val).unwrap().to_rust_string_lossy(scope);
+    let json_str = v8::json::stringify(scope, payload_val)
+        .map(|s| s.to_rust_string_lossy(scope))
+        .unwrap_or_else(|| "{}".to_string());
     let mut payload: serde_json::Map<String, Value> = serde_json::from_str(&json_str).unwrap_or_default();
     let secret = v8_to_string(scope, args.get(1));
     
@@ -472,20 +474,40 @@ fn native_db_connect(scope: &mut v8::HandleScope, args: v8::FunctionCallbackArgu
     }
 
     if DB_POOL.get().is_none() {
-        let cfg: Config = conn_string.parse().unwrap();
+        let cfg: Config = match conn_string.parse() {
+            Ok(c) => c,
+            Err(e) => {
+                let msg = format!("t.db.connect(): Invalid connection string: {}", e);
+                let message = v8::String::new(scope, &msg).unwrap_or_else(|| v8::String::new(scope, "Error").unwrap());
+                let exception = v8::Exception::error(scope, message);
+                scope.throw_exception(exception);
+                return;
+            }
+        };
         let mgr = Manager::new(cfg, NoTls);
     
-        let pool = Pool::builder(mgr)
+        let pool = match Pool::builder(mgr)
             .max_size(max_size)
-            .build()
-            .unwrap();
+            .build() {
+                Ok(p) => p,
+                Err(e) => {
+                    throw(scope, &format!("t.db.connect(): Failed to build connection pool: {}", e));
+                    return;
+                }
+            };
     
         DB_POOL.set(pool).ok();
     }
 
     let db_conn_obj = v8::Object::new(scope);
 
-    let query_fn = v8::Function::new(scope, native_db_query).unwrap();
+    let query_fn = match v8::Function::new(scope, native_db_query) {
+        Some(f) => f,
+        None => {
+            throw(scope, "t.db.connect(): Failed to create query function");
+            return;
+        }
+    };
     let query_key = v8_str(scope, "query");
     db_conn_obj.set(scope, query_key.into(), query_fn.into());
 

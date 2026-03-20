@@ -2,7 +2,7 @@
 //  Titan Planet — Type Definitions
 //  Framework: JavaScript-first backend compiled to native Rust + Axum binary
 //  Version:   v26 (Stable)
-//  Docs:      https://titan-docs-ez.vercel.app/docs
+//  Docs:      https://titanpl.vercel.app/docs
 //  GitHub:    https://github.com/ezet-galaxy/titanpl
 // =============================================================================
 
@@ -28,8 +28,8 @@
  * }
  * ```
  *
- * @see https://titan-docs-ez.vercel.app/docs/03-actions — Actions documentation
- * @see https://titan-docs-ez.vercel.app/docs/02-routes  — Routes & parameters
+ * @see https://titanpl.vercel.app/docs/how-to-use/02-actions — Actions documentation
+ * @see https://titanpl.vercel.app/docs/how-to-use/01-routes  — Routes & parameters
  */
 export interface TitanRequest {
     /**
@@ -106,7 +106,7 @@ export interface TitanRequest {
      * }
      * ```
      *
-     * @see https://titan-docs-ez.vercel.app/docs/02-routes — Dynamic routes
+     * @see https://titanpl.vercel.app/docs/how-to-use/01-routes#dynamic-routes-useridnumber — Dynamic routes
      */
     params: Record<string, string>;
 
@@ -130,6 +130,18 @@ export interface TitanRequest {
      * ```
      */
     query: Record<string, string>;
+
+    /**
+     * The unique ID of the WebSocket connection.
+     * Only present during WebSocket events (`open`, `message`, `close`).
+     */
+    socketId?: string;
+
+    /**
+     * The type of WebSocket event: "open", "message", or "close".
+     * Only present during WebSocket execution.
+     */
+    event?: "open" | "message" | "close";
 }
 
 /**
@@ -167,7 +179,7 @@ export interface TitanRequest {
  * });
  * ```
  *
- * @see https://titan-docs-ez.vercel.app/docs/03-actions — Action definition patterns
+ * @see https://titanpl.vercel.app/docs/how-to-use/02-actions — Action definition patterns
  */
 export function defineAction<T>(
     handler: (req: TitanRequest) => T
@@ -331,7 +343,6 @@ export const url: typeof t.url;
  * Provides schema-based validation for request data. Works with
  * the `@titanpl/valid` package for advanced validation rules.
  *
- * @see https://titan-docs-ez.vercel.app/docs/12-sdk — TitanPl SDK
  */
 export const valid: any;
 
@@ -406,8 +417,8 @@ declare global {
      * }
      * ```
      *
-     * @see https://titan-docs-ez.vercel.app/docs/14-drift — Drift documentation
-     * @see https://titan-docs-ez.vercel.app/docs/runtime-architecture — Gravity Runtime
+     * @see https://titanpl.vercel.app/docs/knowledge/04-drift — Drift documentation
+     * @see https://titanpl.vercel.app/docs/knowledge/02-runtime-architecture — Gravity Runtime
      */
     var drift: <T>(promise: Promise<T> | T) => T;
 
@@ -440,7 +451,7 @@ declare global {
      * }
      * ```
      *
-     * @see https://titan-docs-ez.vercel.app/docs/04-runtime-apis — Runtime APIs
+     * @see https://titanpl.vercel.app/docs/how-to-use/05-runtime-apis — Runtime APIs
      */
     interface DbConnection {
         /**
@@ -500,7 +511,7 @@ declare global {
      * }
      * ```
      *
-     * @see https://titan-docs-ez.vercel.app/docs/04-runtime-apis — Complete Runtime APIs reference
+     * @see https://titanpl.vercel.app/docs/how-to-use/05-runtime-apis — Complete Runtime APIs reference
      */
     interface TitanRuntimeUtils {
 
@@ -530,7 +541,7 @@ declare global {
          * t.log("Multiple", "values", { are: "supported" }, 42);
          * ```
          *
-         * @see https://titan-docs-ez.vercel.app/docs/06-logs — Gravity Logs
+         * @see https://titanpl.vercel.app/docs/how-to-use/07-logs — Gravity Logs
          */
         log(...args: any[]): void;
 
@@ -553,7 +564,7 @@ declare global {
          * }
          * ```
          *
-         * @see https://titan-docs-ez.vercel.app/docs/04-runtime-apis — Runtime APIs
+         * @see https://titanpl.vercel.app/docs/how-to-use/05-runtime-apis — Runtime APIs
          */
         read(path: string): string;
 
@@ -616,7 +627,7 @@ declare global {
          * }
          * ```
          *
-         * @see https://titan-docs-ez.vercel.app/docs/04-runtime-apis — Runtime APIs (t.fetch)
+         * @see https://titanpl.vercel.app/docs/how-to-use/05-runtime-apis — Runtime APIs (t.fetch)
          */
         fetch(url: string, options?: {
             method?: "GET" | "POST" | "PUT" | "DELETE" | "PATCH";
@@ -628,6 +639,38 @@ declare global {
             body?: string;
             error?: string;
         }>;
+
+        /**
+         * WebSocket communication utilities.
+         *
+         * Allows sending direct messages or broadcasting to all active sockets.
+         *
+         * @example
+         * ```js
+         * export default defineAction((req) => {
+         *   if (req.event === "open") {
+         *     t.ws.send(req.socketId, "Welcome!");
+         *     t.ws.broadcast("Someone joined.");
+         *   }
+         * });
+         * ```
+         */
+        ws: {
+            /**
+             * Send a text message to a specific WebSocket client.
+             *
+             * @param socketId - The unique ID of the target connection.
+             * @param message - The text message to send.
+             */
+            send(socketId: string, message: string): void;
+
+            /**
+             * Broadcast a text message to ALL active WebSocket connections.
+             *
+             * @param message - The text message to broadcast.
+             */
+            broadcast(message: string): void;
+        };
 
 
         // -------------------------------------------------------------------
@@ -669,7 +712,7 @@ declare global {
          * }
          * ```
          *
-         * @see https://titan-docs-ez.vercel.app/docs/04-runtime-apis — Runtime APIs (t.jwt)
+         * @see https://titanpl.vercel.app/docs/how-to-use/05-runtime-apis — Runtime APIs (t.jwt)
          */
         jwt: {
             /**
@@ -737,7 +780,7 @@ declare global {
          * }
          * ```
          *
-         * @see https://titan-docs-ez.vercel.app/docs/04-runtime-apis — Runtime APIs (t.password)
+         * @see https://titanpl.vercel.app/docs/how-to-use/05-runtime-apis — Runtime APIs (t.password)
          */
         password: {
             /**
@@ -811,7 +854,7 @@ declare global {
          * }
          * ```
          *
-         * @see https://titan-docs-ez.vercel.app/docs/04-runtime-apis — Runtime APIs (t.db)
+         * @see https://titanpl.vercel.app/docs/how-to-use/05-runtime-apis — Runtime APIs (t.db)
          */
         db: {
             /**
@@ -884,7 +927,7 @@ declare global {
          * directories. All methods return `Promise` — use `drift()` to resolve.
          *
          * @see {@link TitanCore.FileSystem} for method signatures.
-         * @see https://titan-docs-ez.vercel.app/docs/13-titan-core — TitanCore Runtime APIs (t.fs)
+         * @see https://titanpl.vercel.app/docs/knowledge/05-titan-core — TitanCore Runtime APIs (t.fs)
          */
         fs: TitanCore.FileSystem;
 
@@ -895,7 +938,7 @@ declare global {
          * cross-platform path joining, resolving, and component extraction.
          *
          * @see {@link TitanCore.Path} for method signatures.
-         * @see https://titan-docs-ez.vercel.app/docs/13-titan-core — TitanCore Runtime APIs (t.path)
+         * @see https://titanpl.vercel.app/docs/knowledge/05-titan-core — TitanCore Runtime APIs (t.path)
          */
         path: TitanCore.Path;
 
@@ -911,7 +954,7 @@ declare global {
          * random bytes generation, and UUID creation. Async methods require `drift()`.
          *
          * @see {@link TitanCore.Crypto} for method signatures.
-         * @see https://titan-docs-ez.vercel.app/docs/13-titan-core — TitanCore Runtime APIs (t.crypto)
+         * @see https://titanpl.vercel.app/docs/knowledge/05-titan-core — TitanCore Runtime APIs (t.crypto)
          */
         crypto: TitanCore.Crypto;
 
@@ -921,7 +964,7 @@ declare global {
          * All methods are **synchronous** — no `drift()` needed.
          *
          * @see {@link TitanCore.BufferModule} for method signatures.
-         * @see https://titan-docs-ez.vercel.app/docs/13-titan-core — TitanCore Runtime APIs (t.buffer)
+         * @see https://titanpl.vercel.app/docs/knowledge/05-titan-core — TitanCore Runtime APIs (t.buffer)
          */
         buffer: TitanCore.BufferModule;
 
@@ -940,7 +983,7 @@ declare global {
          * @suggestion Use `setObject`/`getObject` for complex data structures to maintain types.
 
          * @see {@link TitanCore.LocalStorage} for method signatures.
-         * @see https://titan-docs-ez.vercel.app/docs/13-titan-core — TitanCore Runtime APIs (t.ls)
+         * @see https://titanpl.vercel.app/docs/knowledge/05-titan-core — TitanCore Runtime APIs (t.ls)
          */
         ls: TitanCore.LocalStorage;
 
@@ -951,7 +994,7 @@ declare global {
          * **synchronous**. Identical to `t.ls` — use whichever alias you prefer.
          *
          * @see {@link TitanCore.LocalStorage} for method signatures.
-         * @see https://titan-docs-ez.vercel.app/docs/13-titan-core — TitanCore Runtime APIs (t.localStorage)
+         * @see https://titanpl.vercel.app/docs/knowledge/05-titan-core — TitanCore Runtime APIs (t.localStorage)
          */
         localStorage: TitanCore.LocalStorage;
 
@@ -965,7 +1008,7 @@ declare global {
          * All methods are **synchronous**.
          *
          * @see {@link TitanCore.Session} for method signatures.
-         * @see https://titan-docs-ez.vercel.app/docs/13-titan-core — TitanCore Runtime APIs (t.session)
+         * @see https://titanpl.vercel.app/docs/knowledge/05-titan-core — TitanCore Runtime APIs (t.session)
          */
         session: TitanCore.Session;
 
@@ -973,7 +1016,7 @@ declare global {
          * HTTP cookie utilities for reading, setting, and deleting cookies.
          *
          * @see {@link TitanCore.Cookies} for method signatures.
-         * @see https://titan-docs-ez.vercel.app/docs/13-titan-core — TitanCore Runtime APIs (t.cookies)
+         * @see https://titanpl.vercel.app/docs/knowledge/05-titan-core — TitanCore Runtime APIs (t.cookies)
          */
         cookies: TitanCore.Cookies;
 
@@ -989,7 +1032,7 @@ declare global {
          * host machine running the Titan server.
          *
          * @see {@link TitanCore.OS} for method signatures.
-         * @see https://titan-docs-ez.vercel.app/docs/13-titan-core — TitanCore Runtime APIs (t.os)
+         * @see https://titanpl.vercel.app/docs/knowledge/05-titan-core — TitanCore Runtime APIs (t.os)
          */
         os: TitanCore.OS;
 
@@ -999,7 +1042,7 @@ declare global {
          * All methods return `Promise` — use `drift()` to resolve.
          *
          * @see {@link TitanCore.Net} for method signatures.
-         * @see https://titan-docs-ez.vercel.app/docs/13-titan-core — TitanCore Runtime APIs (t.net)
+         * @see https://titanpl.vercel.app/docs/knowledge/05-titan-core — TitanCore Runtime APIs (t.net)
          */
         net: TitanCore.Net;
 
@@ -1009,7 +1052,7 @@ declare global {
          * All methods are **synchronous**.
          *
          * @see {@link TitanCore.Process} for method signatures.
-         * @see https://titan-docs-ez.vercel.app/docs/13-titan-core — TitanCore Runtime APIs (t.proc)
+         * @see https://titanpl.vercel.app/docs/knowledge/05-titan-core — TitanCore Runtime APIs (t.proc)
          */
         proc: TitanCore.Process;
 
@@ -1024,7 +1067,7 @@ declare global {
          * `t.time.sleep()` is async (requires `drift()`); other methods are synchronous.
          *
          * @see {@link TitanCore.Time} for method signatures.
-         * @see https://titan-docs-ez.vercel.app/docs/13-titan-core — TitanCore Runtime APIs (t.time)
+         * @see https://titanpl.vercel.app/docs/knowledge/05-titan-core — TitanCore Runtime APIs (t.time)
          */
         time: TitanCore.Time;
 
@@ -1032,7 +1075,7 @@ declare global {
          * URL parsing and formatting utilities.
          *
          * @see {@link TitanCore.URLModule} for method signatures.
-         * @see https://titan-docs-ez.vercel.app/docs/13-titan-core — TitanCore Runtime APIs (t.url)
+         * @see https://titanpl.vercel.app/docs/knowledge/05-titan-core — TitanCore Runtime APIs (t.url)
          */
         url: TitanCore.URLModule;
 
@@ -1055,7 +1098,7 @@ declare global {
          * Custom extensions attach their methods to the `t` object at runtime,
          * making them available as `t.myExtension.someMethod()`.
          *
-         * @see https://titan-docs-ez.vercel.app/docs/10-extensions — Extensions documentation
+         * @see https://titanpl.vercel.app/docs/10-extensions — Extensions documentation
          */
         [key: string]: any;
 
@@ -1077,8 +1120,8 @@ declare global {
      * }
      * ```
      *
-     * @see https://titan-docs-ez.vercel.app/docs/04-runtime-apis — Full API reference
-     * @see https://titan-docs-ez.vercel.app/docs/13-titan-core — TitanCore Runtime APIs
+     * @see https://titanpl.vercel.app/docs/how-to-use/05-runtime-apis — Full API reference
+     * @see https://titanpl.vercel.app/docs/knowledge/05-titan-core — TitanCore Runtime APIs
      */
     const t: TitanRuntimeUtils;
 
@@ -1142,7 +1185,7 @@ declare global {
          * }
          * ```
          *
-         * @see https://titan-docs-ez.vercel.app/docs/04-runtime-apis — Runtime APIs (t.fs)
+         * @see https://titanpl.vercel.app/docs/how-to-use/05-runtime-apis — Runtime APIs (t.fs)
          */
         interface FileSystem {
             /**
@@ -1232,7 +1275,7 @@ declare global {
          * t.path.basename("/a/b/c.txt");  // → "c.txt"
          * ```
          *
-         * @see https://titan-docs-ez.vercel.app/docs/04-runtime-apis — Runtime APIs (t.path)
+         * @see https://titanpl.vercel.app/docs/how-to-use/05-runtime-apis — Runtime APIs (t.path)
          */
         interface Path {
             /**
@@ -1320,7 +1363,7 @@ declare global {
          * }
          * ```
          *
-         * @see https://titan-docs-ez.vercel.app/docs/04-runtime-apis — Runtime APIs (t.crypto)
+         * @see https://titanpl.vercel.app/docs/how-to-use/05-runtime-apis — Runtime APIs (t.crypto)
          */
         interface Crypto {
             /**
@@ -1463,7 +1506,7 @@ declare global {
          * const bytes = t.buffer.fromHex(hex);
          * ```
          *
-         * @see https://titan-docs-ez.vercel.app/docs/04-runtime-apis — Runtime APIs (t.buffer)
+         * @see https://titanpl.vercel.app/docs/how-to-use/05-runtime-apis — Runtime APIs (t.buffer)
          */
         interface BufferModule {
             /**
@@ -1546,7 +1589,7 @@ declare global {
          * t.ls.clear();
          * ```
          *
-         * @see https://titan-docs-ez.vercel.app/docs/04-runtime-apis — Runtime APIs (t.ls / t.localStorage)
+         * @see https://titanpl.vercel.app/docs/how-to-use/05-runtime-apis — Runtime APIs (t.ls / t.localStorage)
          */
         interface LocalStorage {
             /**
@@ -1651,7 +1694,7 @@ declare global {
          * }
          * ```
          *
-         * @see https://titan-docs-ez.vercel.app/docs/04-runtime-apis — Runtime APIs (t.session)
+         * @see https://titanpl.vercel.app/docs/how-to-use/05-runtime-apis — Runtime APIs (t.session)
          */
         interface Session {
             /**
@@ -1713,7 +1756,7 @@ declare global {
          * }
          * ```
          *
-         * @see https://titan-docs-ez.vercel.app/docs/04-runtime-apis — Runtime APIs (t.cookies)
+         * @see https://titanpl.vercel.app/docs/how-to-use/05-runtime-apis — Runtime APIs (t.cookies)
          */
         interface Cookies {
             /**
@@ -1762,7 +1805,7 @@ declare global {
          * }
          * ```
          *
-         * @see https://titan-docs-ez.vercel.app/docs/04-runtime-apis — Runtime APIs (t.os)
+         * @see https://titanpl.vercel.app/docs/how-to-use/05-runtime-apis — Runtime APIs (t.os)
          */
         interface OS {
             /**
@@ -1816,7 +1859,7 @@ declare global {
          * }
          * ```
          *
-         * @see https://titan-docs-ez.vercel.app/docs/04-runtime-apis — Runtime APIs (t.net)
+         * @see https://titanpl.vercel.app/docs/how-to-use/05-runtime-apis — Runtime APIs (t.net)
          */
         interface Net {
             /**
@@ -1859,7 +1902,7 @@ declare global {
          * }
          * ```
          *
-         * @see https://titan-docs-ez.vercel.app/docs/04-runtime-apis — Runtime APIs (t.proc)
+         * @see https://titanpl.vercel.app/docs/how-to-use/05-runtime-apis — Runtime APIs (t.proc)
          */
         interface Process {
             /**
@@ -1900,7 +1943,7 @@ declare global {
          * }
          * ```
          *
-         * @see https://titan-docs-ez.vercel.app/docs/04-runtime-apis — Runtime APIs (t.time)
+         * @see https://titanpl.vercel.app/docs/how-to-use/05-runtime-apis — Runtime APIs (t.time)
          */
         interface Time {
             /**
@@ -1954,7 +1997,7 @@ declare global {
          * // → "https://api.example.com/v2/users"
          * ```
          *
-         * @see https://titan-docs-ez.vercel.app/docs/04-runtime-apis — Runtime APIs (t.url)
+         * @see https://titanpl.vercel.app/docs/how-to-use/05-runtime-apis — Runtime APIs (t.url)
          */
         interface URLModule {
             /**

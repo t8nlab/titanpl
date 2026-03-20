@@ -11,6 +11,9 @@ export const password = t.password;
 // Database
 export const db = t.db;
 
+// WebSockets
+export const ws = t.ws;
+
 // File System & Path
 export const fs = t.fs;
 export const path = t.path;

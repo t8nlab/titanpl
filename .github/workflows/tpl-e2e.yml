@@ -28,7 +28,7 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y jq lsof curl
 
       - name: Install Titan CLI
-        run: npm install -g @ezetgalaxy/titan@latest
+        run: npm install -g @titanpl/cli@latest
 
       # ---------------- INIT PROJECT ----------------
       - name: Init TitanPl Project
@@ -158,7 +158,7 @@ jobs:
       - name: Update routes
         run: |
           cat <<EOF > demo/app/app.js
-          import t from "../titan/titan.js";
+          import t from "@titanpl/route";
           t.get("/").reply("ok");
           t.get("/h").action("health");
           t.start(5100, "TitanPl dev test", 6);

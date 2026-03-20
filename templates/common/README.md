@@ -78,7 +78,7 @@ docker run -p 5100:5100 my-titan-app
 
 ## 🌐 Community & Support
 
-- **Documentation**: [docs.titanpl.com](https://titanpl.vercel.app)
+- **Documentation**: [titanpl.vercel.app](https://titanpl.vercel.app)
 - **GitHub**: [github.com/t8nlab/titanpl](https://github.com/t8nlab/titanpl)
 - **Discord**: [Join our community](https://discord.gg/titanpl)
 

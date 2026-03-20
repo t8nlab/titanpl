@@ -181,7 +181,18 @@ fn setup_native_utils(scope: &mut v8::HandleScope, t_obj: v8::Local<v8::Object>)
     let fs_key = v8_str(scope, "fs");
     core_obj.set(scope, fs_key.into(), fs_obj.into());
     
-
+    // t.ws
+    let ws_obj = v8::Object::new(scope);
+    let ws_send_fn = v8::Function::new(scope, native_ws_send).unwrap();
+    let ws_broadcast_fn = v8::Function::new(scope, native_ws_broadcast).unwrap();
+    
+    let send_key = v8_str(scope, "send");
+    ws_obj.set(scope, send_key.into(), ws_send_fn.into());
+    let broadcast_key = v8_str(scope, "broadcast");
+    ws_obj.set(scope, broadcast_key.into(), ws_broadcast_fn.into());
+    
+    let ws_key = v8_str(scope, "ws");
+    t_obj.set(scope, ws_key.into(), ws_obj.into());
 }
 
 fn native_read_sync(scope: &mut v8::HandleScope, args: v8::FunctionCallbackArguments, mut retval: v8::ReturnValue) {
@@ -356,11 +367,34 @@ fn native_log(scope: &mut v8::HandleScope, args: v8::FunctionCallbackArguments, 
     );
 }
 
+fn native_ws_send(scope: &mut v8::HandleScope, args: v8::FunctionCallbackArguments, mut _retval: v8::ReturnValue) {
+    let id = v8_to_string(scope, args.get(0));
+    let msg = v8_to_string(scope, args.get(1));
+    
+    if let Some(channels) = super::WS_CHANNELS.get() {
+        if let Some(tx) = channels.get(&id) {
+            let _ = tx.send(axum::extract::ws::Message::Text(msg.into()));
+        }
+    }
+}
+
+fn native_ws_broadcast(scope: &mut v8::HandleScope, args: v8::FunctionCallbackArguments, mut _retval: v8::ReturnValue) {
+    let msg = v8_to_string(scope, args.get(0));
+    
+    if let Some(channels) = super::WS_CHANNELS.get() {
+        for tx in channels.iter() {
+            let _ = tx.send(axum::extract::ws::Message::Text(msg.clone().into()));
+        }
+    }
+}
+
 
 
 fn native_jwt_sign(scope: &mut v8::HandleScope, args: v8::FunctionCallbackArguments, mut retval: v8::ReturnValue) {
     let payload_val = args.get(0);
-    let json_str = v8::json::stringify(scope, payload_val).unwrap().to_rust_string_lossy(scope);
+    let json_str = v8::json::stringify(scope, payload_val)
+        .map(|s| s.to_rust_string_lossy(scope))
+        .unwrap_or_else(|| "{}".to_string());
     let mut payload: serde_json::Map<String, Value> = serde_json::from_str(&json_str).unwrap_or_default();
     let secret = v8_to_string(scope, args.get(1));
     
@@ -472,13 +506,27 @@ fn native_db_connect(scope: &mut v8::HandleScope, args: v8::FunctionCallbackArgu
     }
 
     if DB_POOL.get().is_none() {
-        let cfg: Config = conn_string.parse().unwrap();
+        let cfg: Config = match conn_string.parse() {
+            Ok(c) => c,
+            Err(e) => {
+                let msg = format!("t.db.connect(): Invalid connection string: {}", e);
+                let message = v8::String::new(scope, &msg).unwrap_or_else(|| v8::String::new(scope, "Error").unwrap());
+                let exception = v8::Exception::error(scope, message);
+                scope.throw_exception(exception);
+                return;
+            }
+        };
         let mgr = Manager::new(cfg, NoTls);
     
-        let pool = Pool::builder(mgr)
+        let pool = match Pool::builder(mgr)
             .max_size(max_size)
-            .build()
-            .unwrap();
+            .build() {
+                Ok(p) => p,
+                Err(e) => {
+                    throw(scope, &format!("t.db.connect(): Failed to build connection pool: {}", e));
+                    return;
+                }
+            };
     
         DB_POOL.set(pool).ok();
     }
@@ -699,7 +747,8 @@ fn native_drift_call(scope: &mut v8::HandleScope, mut args: v8::FunctionCallback
                 (op, t.to_string())
             },
             None => {
-                throw(scope, "drift() requires an async operation or array of operations");
+                // If it's not a recognized async op, just return it immediately (sync/identity path)
+                retval.set(arg0);
                 return;
             }
         }

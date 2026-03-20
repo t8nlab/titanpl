@@ -42,6 +42,28 @@ const t = {
 
     start(port = 3000, msg = "", threads, stack_mb = 8) {
         globalThis.__TITAN_CONFIG__ = { port, msg, threads, stack_mb };
+    },
+
+    ws(route) {
+        return {
+            action(name) {
+                if (route.includes(":")) {
+                    if (!dynamicRoutes["WS"]) dynamicRoutes["WS"] = [];
+                    dynamicRoutes["WS"].push({
+                        method: "WS",
+                        pattern: route,
+                        action: name
+                    });
+                    actionMap[`WS:${route}`] = name;
+                } else {
+                    routes[`WS:${route}`] = {
+                        type: "websocket",
+                        value: name
+                    };
+                    actionMap[`WS:${route}`] = name;
+                }
+            }
+        };
     }
 };
 

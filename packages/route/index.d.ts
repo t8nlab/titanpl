@@ -8,6 +8,7 @@ export interface TitanRoute {
     post(route: string): RouteBuilder;
     put(route: string): RouteBuilder;
     delete(route: string): RouteBuilder;
+    ws(route: string): { action(name: string): void };
     log(module: string, msg: string): void;
     start(port?: number, msg?: string, threads?: number, stack_mb?: number): void;
 }

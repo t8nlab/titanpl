@@ -39,6 +39,12 @@ if (!globalThis.__TITAN_CORE_LOADED__) {
                 req.body = {};
             }
 
+            // WebSocket normalization
+            if (req.headers && req.headers.socketId) {
+                req.socketId = req.headers.socketId;
+                req.event = req.headers.event;
+            }
+
             // ===============================
 
             const isSuspend = (err) => {
@@ -180,18 +186,8 @@ if (!globalThis.__TITAN_CORE_LOADED__) {
 
     t.response = titanResponse;
 
-    // Drift Support
+    // Drift Support (Flexible: allows sync & async)
     globalThis.drift = function (value) {
-        if (Array.isArray(value)) {
-            for (const item of value) {
-                if (!item || !item.__titanAsync) {
-                    throw new Error("drift() array must contain async ops only.");
-                }
-            }
-        } else if (!value || !value.__titanAsync) {
-            throw new Error("drift() must wrap async ops.");
-        }
-
         return t._drift_call(value);
     };
 

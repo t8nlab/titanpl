@@ -96,7 +96,7 @@ async fn handler(State(state): State<AppState>, req: Request<Body>) -> impl Into
                         "Server-Timing",
                         format!("reply;dur={:.2}", elapsed.as_secs_f64() * 1000.0)
                             .parse()
-                            .unwrap(),
+                            .unwrap_or_else(|_| axum::http::HeaderValue::from_static("")),
                     );
 
                     if log_enabled {
@@ -140,7 +140,7 @@ async fn handler(State(state): State<AppState>, req: Request<Body>) -> impl Into
                         "Server-Timing",
                         format!("fastpath;dur={:.2}", elapsed.as_secs_f64() * 1000.0)
                             .parse()
-                            .unwrap(),
+                            .unwrap_or_else(|_| axum::http::HeaderValue::from_static("")),
                     );
 
                     if log_enabled {
@@ -409,7 +409,7 @@ async fn handler(State(state): State<AppState>, req: Request<Body>) -> impl Into
             .join(", ");
         response
             .headers_mut()
-            .insert("Server-Timing", server_timing.parse().unwrap());
+            .insert("Server-Timing", server_timing.parse().unwrap_or_else(|_| axum::http::HeaderValue::from_static("")));
     }
 
     // Logging

@@ -14,11 +14,32 @@ import t from "@titanpl/route";
 // Define an action-based route
 t.post("/hello").action("hello"); // pass a json payload { "name": "titan" }
 
+// Define a WebSocket route
+t.ws("/chat").action("chat");
+
 // Define a direct reply route
 t.get("/").reply("Ready to land on Titan Planet 🚀");
 
 // Configure the server
 t.start(5100, "Titan Running!");
+```
+
+### WebSocket Action Handling
+When using `t.ws()`, your action receives the `event`, `socketId`, and `body`:
+
+```javascript
+export const chat = (req) => {
+    const { event, socketId, body } = req;
+
+    if (event === "open") {
+        t.ws.send(socketId, "Connected to Titan Orbital Hub!");
+        t.ws.broadcast(`User ${socketId} has docked.`);
+    }
+
+    if (event === "message") {
+        t.ws.broadcast(`${socketId}: ${body}`);
+    }
+};
 ```
 
 **Important Note:** Currently, Titan Planet and its entire package ecosystem are only for Windows. The Linux version is in development (dev only) for the new architecture and will be launched later.

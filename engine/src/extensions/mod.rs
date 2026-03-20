@@ -27,6 +27,7 @@ use v8;
 // GLOBALS
 
 pub static SHARE_CONTEXT: OnceLock<ShareContextStore> = OnceLock::new();
+pub static WS_CHANNELS: OnceLock<Arc<DashMap<String, tokio::sync::mpsc::UnboundedSender<axum::extract::ws::Message>>>> = OnceLock::new();
 pub static PROJECT_ROOT: OnceLock<PathBuf> = OnceLock::new();
 
 pub struct ShareContextStore {

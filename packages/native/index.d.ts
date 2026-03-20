@@ -24,6 +24,10 @@ export function drift<T>(op: any): T;
 
 // Add more as needed based on native/index.js
 export const db: any;
+export const ws: {
+    send(id: string, message: string): void;
+    broadcast(message: string): void;
+};
 export const path: any;
 export const jwt: any;
 export const password: any;

@@ -6,16 +6,16 @@
     "template": "js"
   },
   "dependencies": {
-    "@titanpl/cli": "2.0.4",
-    "@titanpl/route": "2.0.4",
-    "@titanpl/native": "2.0.4",
+    "@titanpl/cli": "6.0.0",
+    "@titanpl/route": "6.0.0",
+    "@titanpl/native": "6.0.0",
     "@titanpl/core": "latest",
     "@titanpl/node": "latest",
-    "@titanpl/packet": "2.0.4"
+    "@titanpl/packet": "6.0.0"
   },
   "optionalDependencies": {
-    "@titanpl/engine-linux-x64": "2.0.5",
-    "@titanpl/engine-win32-x64": "2.0.3"
+    "@titanpl/engine-linux-x64": "6.0.0",
+    "@titanpl/engine-win32-x64": "6.0.0"
   },
   "scripts": {
     "build": "titan build",
@@ -28,5 +28,5 @@
     "eslint": "^9.39.2",
     "eslint-plugin-titanpl": "latest"
   },
-  "version": "2.0.4"
+  "version": "6.0.0"
 }
