@@ -7,5 +7,3 @@ This package holds the core Rust + Axum high-performance web server tightly coup
 
 ## How it works
 You don't need to manually interact with this module. It acts as an optional dependency resolved by `#titanpl/cli`. If you run TitanPlanet on a Linux x64 machine, npm/yarn automatically downloads this native binary to run your application.
-
-**Important Note:** Currently, Titan Planet and its entire package ecosystem are only for Windows. The Linux version is in development (dev only) for the new architecture and will be launched later.

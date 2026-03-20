@@ -8,4 +8,3 @@ This module provides the highly concurrent Rust-based server binary (`titan.exe`
 ## How it works
 Like the other engine packages, this works entirely behind the scenes. When `@titanpl/cli` is installed on a Windows instance, it fetches this `.exe` runtime. The CLI then maps your built assets and JS routes into the binary for deployment.
 
-**Important Note:** Currently, Titan Planet and its entire package ecosystem are only for Windows. The Linux version is in development (dev only) for the new architecture and will be launched later.
