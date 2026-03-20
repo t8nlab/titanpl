@@ -647,12 +647,12 @@ declare global {
          *
          * @example
          * ```js
-         * export default defineAction((req) => {
+         * export default function chat(req) {
          *   if (req.event === "open") {
          *     t.ws.send(req.socketId, "Welcome!");
          *     t.ws.broadcast("Someone joined.");
          *   }
-         * });
+         * }
          * ```
          */
         ws: {
