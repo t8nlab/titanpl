@@ -27,6 +27,7 @@ export const ls = t.ls;
 export const localStorage = t.localStorage;
 export const session = t.session;
 export const cookies = t.cookies;
+export const shareContext = t.shareContext;
 
 // System
 export const os = t.os;

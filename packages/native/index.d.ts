@@ -22,12 +22,17 @@ export function defineAction<T = any>(handler: (req: Request) => T | Promise<T>)
 export function fetch(url: string, options?: any): any;
 export function drift<T>(op: any): T;
 
+export interface ShareContext {
+    get(key: string): any;
+    set(key: string, value: any): void;
+    delete(key: string): void;
+    keys(): string[];
+    broadcast(event: string, payload: any): void;
+}
+
 // Add more as needed based on native/index.js
 export const db: any;
-export const ws: {
-    send(id: string, message: string): void;
-    broadcast(message: string): void;
-};
+export const ws: any;
 export const path: any;
 export const jwt: any;
 export const password: any;
@@ -36,6 +41,7 @@ export const buffer: any;
 export const ls: any;
 export const session: any;
 export const cookies: any;
+export const shareContext: ShareContext;
 export const os: any;
 export const net: any;
 export const proc: any;

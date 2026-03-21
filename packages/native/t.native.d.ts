@@ -298,6 +298,14 @@ export const session: typeof t.session;
 export const cookies: typeof t.cookies;
 
 /**
+ * Titan Shared Context (Shared In-Memory State) shorthand.
+ *
+ * Re-exported from the `t` global for module-style imports.
+ * @see {@link TitanCore.ShareContext} for full documentation.
+ */
+export const shareContext: typeof t.shareContext;
+
+/**
  * Operating system information (platform, CPU count, memory).
  *
  * Re-exported from the `t` global for module-style imports.
@@ -1011,6 +1019,19 @@ declare global {
          * @see https://titanpl.vercel.app/docs/knowledge/05-titan-core — TitanCore Runtime APIs (t.session)
          */
         session: TitanCore.Session;
+
+        /**
+         * Titan Shared Context — Cross-isolate Shared In-Memory State.
+         *
+         * Provides a mechanism for sharing data across different isolates (requests)
+         * and broadcasting events within the same server process.
+         * 
+         * Data in `shareContext` is volatile and lost when the server exits.
+         * 
+         * @see {@link TitanCore.ShareContext} for method signatures.
+         * @see https://titanpl.vercel.app/docs/knowledge/05-titan-core — TitanCore Runtime APIs (t.shareContext)
+         */
+        shareContext: TitanCore.ShareContext;
 
         /**
          * HTTP cookie utilities for reading, setting, and deleting cookies.
@@ -1729,6 +1750,73 @@ declare global {
              * @param sessionId - The unique session identifier to clear.
              */
             clear(sessionId: string): void;
+        }
+
+        /**
+         * Titan Shared Context — Cross-isolate Shared In-Memory State.
+         *
+         * Provides a mechanism for sharing data across different isolates (requests)
+         * and broadcasting events within the same server process.
+         * 
+         * Data in `shareContext` is in-memory only and is lost when the server process exits.
+         * 
+         * @example
+         * ```js
+         * export function getStats(req) {
+         *   // Store a value common to all requests
+         *   t.shareContext.set("last_login", t.time.now());
+         *   
+         *   // Retrieve a value
+         *   const users = t.shareContext.get("active_users");
+         *   
+         *   // Broadcast a message to other workers
+         *   t.shareContext.broadcast("user_login", { user: "Titan" });
+         * }
+         * ```
+         * 
+         * @see https://titanpl.vercel.app/docs/knowledge/05-titan-core — TitanCore Runtime APIs (t.shareContext)
+         */
+        interface ShareContext {
+            /**
+             * Retrieve a value from the shared context.
+             * 
+             * @param key - The key of the value to retrieve.
+             * @returns The parsed value, or `null` if the key does not exist.
+             */
+            get(key: string): any;
+
+            /**
+             * Store a value in the shared context.
+             * 
+             * Values are serialized as JSON and must be serializable.
+             * 
+             * @param key - The key to store under.
+             * @param value - The JSON-serializable value to store.
+             */
+            set(key: string, value: any): void;
+
+            /**
+             * Remove a key and its value from the shared context.
+             * 
+             * @param key - The key to remove.
+             */
+            delete(key: string): void;
+
+            /**
+             * Get a list of all keys currently in the shared context.
+             * 
+             * @returns An array of string keys.
+             */
+            keys(): string[];
+
+            /**
+             * Broadcast an event and payload to other active isolates (requests) 
+             * and workers in this server process.
+             * 
+             * @param event - The name of the event to broadcast.
+             * @param payload - The payload of the event.
+             */
+            broadcast(event: string, payload: any): void;
         }
 
         /**

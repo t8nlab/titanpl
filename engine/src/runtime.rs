@@ -64,7 +64,7 @@ impl RuntimeManager {
                 let respond_tx = req.respond_tx;
                 tokio::spawn(async move {
                     let start = std::time::Instant::now();
-                    let result = extensions::builtin::run_async_operation(req.op).await;
+                    let result = extensions::builtins::system::run_async_operation(req.op).await;
                     let duration_ms = start.elapsed().as_secs_f64() * 1000.0;
                     let _ = respond_tx.send(WorkerAsyncResult {
                         drift_id,

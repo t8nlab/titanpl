@@ -7,7 +7,7 @@
 //! 4. Inlined hot-path functions.
 
 #![allow(unused)]
-pub mod builtin;
+pub mod builtins;
 pub mod external;
 
 use crate::action_management::scan_actions;
@@ -297,7 +297,7 @@ pub fn inject_extensions(scope: &mut v8::HandleScope, global: v8::Local<v8::Obje
         .create_data_property(scope, t_key.into(), t_obj.into())
         .unwrap();
 
-    builtin::inject_builtin_extensions(scope, global, t_obj);
+    builtins::inject_builtin_extensions(scope, global, t_obj);
     external::inject_external_extensions(scope, global, t_obj);
 
     global.set(scope, t_key.into(), t_obj.into());
