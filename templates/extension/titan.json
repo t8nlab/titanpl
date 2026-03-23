@@ -1,18 +1,7 @@
 {
-    "name": "{{name}}",
-    "main": "index.js",
-    "description": "A Titan extension",
-    "native": {
-        "path": "native/target/release/{{native_name}}_native.dll",
-        "functions": {
-            "add": {
-                "symbol": "add",
-                "parameters": [
-                    "f64",
-                    "f64"
-                ],
-                "result": "f64"
-            }
-        }
-    }
+  "name": "my-extension",
+  "version": "1.0.0",
+  "type": "wasm",
+  "entry": "index.js",
+  "description": "A high-performance TitanPL extension."
 }

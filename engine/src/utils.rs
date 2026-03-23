@@ -18,6 +18,9 @@ pub fn gray(s: &str) -> String {
 pub fn red(s: &str) -> String {
     format!("\x1b[31m{}\x1b[0m", s)
 }
+pub fn bold(s: &str) -> String {
+    format!("\x1b[1m{}\x1b[0m", s)
+}
 
 pub fn parse_expires_in(value: &str) -> Option<u64> {
     let (num, unit) = value.split_at(value.len() - 1);

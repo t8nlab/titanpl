@@ -1,26 +1,16 @@
 {
-  "name": "{{name}}",
-  "version": "6.0.0",
-  "description": "A Titan Planet extension",
+  "name": "my-extension",
+  "version": "7.0.0-beta",
+  "description": "A high-performance TitanPL extension.",
+  "type": "module",
   "main": "index.js",
-  "types": "index.d.ts",
-  "type": "commonjs",
-  "scripts": {
-    "test": "microgravity test"
-  },
-  "keywords": [
-    "titan planet",
-    "extension"
+  "files": [
+    "index.js",
+    "titan.json",
+    "jsconfig.json",
+    "README.md"
   ],
-  "author": "",
-  "license": "ISC",
   "dependencies": {
-    "@titanpl/core": "latest",
-    "chokidar": "^5.0.0",
-    "esbuild": "^0.27.2",
-    "titanpl-sdk": "6.0.0"
-  },
-  "devDependencies": {
-    "@tgrv/microgravity": "latest"
+    "@titanpl/sdk": "7.0.0-beta"
   }
 }

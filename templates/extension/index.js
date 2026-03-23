@@ -1,17 +1,17 @@
-// Define your extension Key
-if (typeof Titan === "undefined") globalThis.Titan = t;
-const EXT_KEY = "{{name}}";
+import { registerExtension } from './utils/registerExtension.js';
 
-// Preserve any native functions already attached to this key
-t[EXT_KEY] = Object.assign(t[EXT_KEY] || {}, {
-    // Example pure JavaScript function
-    hello: function (name) {
-        return `Hello ${name} from ${EXT_KEY}!`;
-    },
-
-    // Example Wrapper for Native function
-    calc: function (a, b) {
-        // Assumes the native function 'add' is mapped in titan.json
-        return t[EXT_KEY].add(a, b);
+const myExt = {
+    /**
+     * A sample function that can be called from any Titan Action.
+     */
+    hello: () => {
+        t.log("{{name}}", "Hello from extension!");
+        return "hello";
     }
-});
+};
+
+// If this is a Wasm or Native extension, bindings will be injected here during build.
+// Use 'titan build ext' to generate them.
+
+registerExtension("{{name}}", myExt);
+export default myExt;

@@ -11,6 +11,10 @@ import { migrateCommand } from "./src/commands/migrate.js";
 import { updateCommand } from "./src/commands/update.js";
 import { initCommand } from "./src/commands/init.js";
 
+import { createCommand } from "./src/commands/create.js";
+import { buildExtensionCommand } from "./src/commands/build-ext.js";
+import { runExtensionCommand } from "./src/commands/run-ext.js";
+
 /* -------------------------------------------------------
  * Resolve __dirname (ESM safe)
  * ----------------------------------------------------- */
@@ -54,6 +58,7 @@ ${bold(cyan("╰─────────────────────�
     ${cyan("init")}      ${gray("Scaffold a new Titan project")}
     ${cyan("create")}    ${gray("Create a new project or extension (e.g. 'titan create ext my-ext')")}
     ${cyan("build")}     ${gray("Compile actions and build production dist. Use --release or -r for a production-ready folder.")}
+    ${cyan("run")}       ${gray("Run the production Gravity Engine or an extension sandbox")}
     ${cyan("dev")}       ${gray("Start the Gravity Engine in dev/watch mode")}
     ${cyan("start")}     ${gray("Start the production Gravity Engine")}
     ${cyan("update")}    ${gray("Update an existing project to latest Titan version")}
@@ -112,24 +117,33 @@ const cmd = process.argv[2];
       case "create": {
         const type = process.argv[3];
         const name = process.argv[4];
-        if (type === "ext" || type === "extension") {
-          await initCommand(name, "extension");
+        await createCommand(type, name);
+        break;
+      }
+
+      case "build": {
+        if (process.argv[3] === "ext" || process.argv[3] === "extension") {
+          await buildExtensionCommand();
         } else {
-          // Fallback to init behavior
-          await initCommand(type, null);
+          const isRelease = process.argv.includes("--release") || process.argv.includes("-r");
+          console.log(cyan(`→ Building Titan project${isRelease ? " (Release mode)" : ""}...`));
+          await buildCommand(isRelease);
+          console.log(green(`✔ ${isRelease ? "Release" : "Build"} complete`));
         }
         break;
       }
 
-      case "build":
-        const isRelease = process.argv.includes("--release") || process.argv.includes("-r");
-        console.log(cyan(`→ Building Titan project${isRelease ? " (Release mode)" : ""}...`));
-        await buildCommand(isRelease);
-        console.log(green(`✔ ${isRelease ? "Release" : "Build"} complete`));
-        break;
-
       case "dev":
         await devCommand();
+        break;
+
+      case "run":
+        if (process.argv[3] === "ext" || process.argv[3] === "extension") {
+          await runExtensionCommand();
+        } else {
+          console.log(cyan("→ Starting Titan Server..."));
+          startCommand();
+        }
         break;
 
       case "start":

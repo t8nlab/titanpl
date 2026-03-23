@@ -148,11 +148,12 @@ for (const { dir, content } of packageJsons) {
         }
     }
 
+    const tag = version.includes('-') ? version.split('-')[1].split('.')[0] : 'latest';
     console.log(`\n======================================`);
-    console.log(`🚀 Publishing ${content.name}...`);
+    console.log(`🚀 Publishing ${content.name} @ ${version} [Tag: ${tag}]...`);
     console.log(`======================================`);
     try {
-        execSync('npm publish --tag latest', { cwd: dir, stdio: 'inherit' });
+        execSync(`npm publish --tag ${tag}`, { cwd: dir, stdio: 'inherit' });
         console.log(`✅ successfully published ${content.name} @ ${version}`);
     } catch (err) {
         console.error(`❌ Failed to publish ${content.name}`);

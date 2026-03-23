@@ -176,17 +176,7 @@ export async function initCommand(projectName, templateName) {
         }
     }
 
-    // 4. Ensure tanfig.json exists with default build config
-    const tanfigPath = path.join(target, "tanfig.json");
-    if (!fs.existsSync(tanfigPath)) {
-        const defaultConfig = {
-            name: projName,
-            build: {
-                files: ["public", "static", "db", "config"]
-            }
-        };
-        fs.writeFileSync(tanfigPath, JSON.stringify(defaultConfig, null, 2));
-    }
+    // 4. Substitution is handled below by substitute()
 
 
     // Recursive template substitution
@@ -210,6 +200,10 @@ export async function initCommand(projectName, templateName) {
                     }
                     if (content.includes("{{native_name}}")) {
                         content = content.replace(/{{native_name}}/g, projName.replace(/-/g, '_'));
+                        changed = true;
+                    }
+                    if (content.includes("workspace:*")) {
+                        content = content.replace(/workspace:\*/g, "6.0.0");
                         changed = true;
                     }
                     if (changed) {

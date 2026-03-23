@@ -9,6 +9,7 @@
 #![allow(unused)]
 pub mod builtins;
 pub mod external;
+pub mod native_host_bridge;
 
 use crate::action_management::scan_actions;
 use crate::utils::{blue, gray, green, red};
@@ -68,6 +69,11 @@ pub enum TitanAsyncOp {
     },
     FsRead {
         path: String,
+    },
+    NativeCall {
+        extension: String,
+        function: String,
+        params: Vec<serde_json::Value>,
     },
     Batch(Vec<TitanAsyncOp>),
 }

@@ -31,6 +31,7 @@ mod extensions;
 mod fast_path;
 mod runtime;
 mod utils;
+mod native_host;
 
 use action_management::{DynamicRoute, RouteVal, match_dynamic_route};
 use fast_path::{FastPathRegistry, PrecomputedRoute};
@@ -524,6 +525,11 @@ async fn main() -> Result<()> {
     dotenvy::dotenv().ok();
 
     let args: Vec<String> = std::env::args().collect();
+    if args.len() >= 3 && args[1] == "native-host" {
+        native_host::run_native_host(&args[2]).await;
+        return Ok(());
+    }
+
     if args.len() < 3 || args[1] != "run" {
         eprintln!("Usage: titan-runtime run <dist_dir>");
         std::process::exit(1);
@@ -717,30 +723,7 @@ async fn handle_websocket(socket: WebSocket, id: String, action: String, state: 
     ).await;
 }
 
-fn resolve_project_root() -> PathBuf {
-    if let Ok(cwd) = std::env::current_dir() {
-        if cwd.join("node_modules").exists()
-            || cwd.join("package.json").exists()
-            || cwd.join(".ext").exists()
-        {
-            return cwd;
-        }
-    }
 
-    if let Ok(exe) = std::env::current_exe() {
-        let mut current = exe.parent();
-        while let Some(dir) = current {
-            if dir.join(".ext").exists() || dir.join("node_modules").exists() {
-                return dir.to_path_buf();
-            }
-            current = dir.parent();
-        }
-    }
-
-    std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."))
-}
-
-/// Find the actions directory for fast-path scanning.
 fn find_actions_dir(dist_dir: &PathBuf) -> PathBuf {
     dist_dir.join("actions")
 }

@@ -1,27 +1,31 @@
-// Type definitions for {{name}}
-// This file facilitates type inference when this extension is installed in a Titan project.
+/**
+ * @package ext-template
+ * Professional extension template for the TitanPL framework.
+ */
 
-declare global {
-    namespace Titan {
-        interface Runtime {
-            /**
-             * {{name}} Extension
-             */
-            "{{name}}": {
-                /**
-                 * Example hello function
-                 */
-                hello(name: string): string;
-
-                /**
-                 * Example calc function (native wrapper)
-                 */
-                calc(a: number, b: number): number;
-
-                // Add your extension methods here
-            }
-        }
-    }
+/** Main configuration interface */
+export interface Config {
+  /** Secure key or secret */
+  secret?: string;
+  /** Custom logging function */
+  log?: (msg: string) => void;
 }
 
-export { };
+/** Standard Success Response */
+export interface Result {
+  result: string;
+  status: "ok" | "error";
+}
+
+/** Main Extension class */
+declare class Extension {
+  constructor(config?: Config);
+
+  /** Hash a string synchronously using bcryptjs */
+  hash(data: string): string;
+
+  /** Standard execution for processing input */
+  execute(input: string): Result;
+}
+
+export default Extension;

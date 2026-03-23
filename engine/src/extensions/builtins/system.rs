@@ -551,6 +551,10 @@ pub fn run_async_operation(
                 }
             }
 
+            TitanAsyncOp::NativeCall { extension, function, params } => {
+                crate::extensions::native_host_bridge::handle_native_call(extension, function, params).await
+            }
+
             // =========================
             // BATCH
             // =========================

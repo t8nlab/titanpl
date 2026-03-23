@@ -67,6 +67,15 @@ export async function build(root = process.cwd()) {
     outDir: dist,
   });
 
+  const tanfigPath = path.join(root, "tanfig.json");
+  if (fs.existsSync(tanfigPath)) {
+    fs.copyFileSync(tanfigPath, path.join(dist, "tanfig.json"));
+  }
+  const titanExtPath = path.join(root, "titan.json");
+  if (fs.existsSync(titanExtPath)) {
+    fs.copyFileSync(titanExtPath, path.join(dist, "titan.json"));
+  }
+
   return dist;
 }
 
@@ -91,7 +100,7 @@ export async function release(root = process.cwd()) {
     } catch (e) { }
   }
 
-  const filesToCopy = config.build && config.build.files ? config.build.files : ["public", "static", "db", "config"];
+  const filesToCopy = config.build && config.build.files ? config.build.files : ["public", "static", "db", "config", "tanfig.json", "titan.json"];
 
   // Clear or ensure build dir
   if (fs.existsSync(buildDir)) {
@@ -111,10 +120,18 @@ export async function release(root = process.cwd()) {
     }
   }
 
-  // 3. Copy package.json
+  // 3. Copy package.json & tanfig.json
   const pkgPath = path.join(root, "package.json");
   if (fs.existsSync(pkgPath)) {
     fs.copyFileSync(pkgPath, path.join(buildDir, "package.json"));
+  }
+  const tanfigPath = path.join(root, "tanfig.json");
+  if (fs.existsSync(tanfigPath)) {
+    fs.copyFileSync(tanfigPath, path.join(buildDir, "tanfig.json"));
+  }
+  const titanConfigPath = path.join(root, "titan.json");
+  if (fs.existsSync(titanConfigPath)) {
+    fs.copyFileSync(titanConfigPath, path.join(buildDir, "titan.json"));
   }
 
   // 4. Create .env
