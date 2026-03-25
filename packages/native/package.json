@@ -1,6 +1,6 @@
 {
   "name": "@titanpl/native",
-  "version": "7.0.0-beta",
+  "version": "7.0.0",
   "description": "Titan native utilities package",
   "type": "module",
   "keywords": [
@@ -20,7 +20,7 @@
     }
   },
   "dependencies": {
-    "@titanpl/core": "latest",
+    "@titanpl/core": "7.0.0",
     "@titanpl/node": "latest"
   }
 }

@@ -1,16 +1,16 @@
 {
   "name": "titanpl",
-  "version": "7.0.0-beta",
+  "version": "7.0.0",
   "description": "A Titan Planet server",
   "type": "module",
   "titan": {
     "template": "rust-js"
   },
   "dependencies": {
-    "@titanpl/cli": "7.0.0-beta",
-    "@titanpl/route": "7.0.0-beta",
-    "@titanpl/native": "7.0.0-beta",
-    "@titanpl/core": "latest",
+    "@titanpl/cli": "7.0.0",
+    "@titanpl/route": "7.0.0",
+    "@titanpl/native": "7.0.0",
+    "@titanpl/core": "7.0.0",
     "@titanpl/node": "latest"
   },
   "scripts": {

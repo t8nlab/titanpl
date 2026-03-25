@@ -47,6 +47,19 @@ pub fn inject_builtin_extensions(scope: &mut v8::HandleScope, global: v8::Local<
     let finish_key = v8_str(scope, "_finish_request");
     t_obj.set(scope, finish_key.into(), finish_fn.into());
 
+    // t.serialize / t.deserialize
+    let ser_fn = v8::Function::new(scope, system::native_serialize).unwrap();
+    let ser_key = v8_str(scope, "serialize");
+    let ser_key_alt = v8_str(scope, "serialise");
+    t_obj.set(scope, ser_key.into(), ser_fn.into());
+    t_obj.set(scope, ser_key_alt.into(), ser_fn.into());
+
+    let deser_fn = v8::Function::new(scope, system::native_deserialize).unwrap();
+    let deser_key = v8_str(scope, "deserialize");
+    let deser_key_alt = v8_str(scope, "deserialise");
+    t_obj.set(scope, deser_key.into(), deser_fn.into());
+    t_obj.set(scope, deser_key_alt.into(), deser_fn.into());
+
     // t.loadEnv
     let env_fn = v8::Function::new(scope, system::native_load_env).unwrap();
     let env_key = v8_str(scope, "loadEnv");

@@ -3,8 +3,10 @@
   "description": "A powerful TitanPL project",
   "version": "1.0.0",
   "extensions": {
-    "allowWasm": false,
-    "allowNative": []
+    "allowWasm": true,
+    "allowNative": [
+      "@titanpl/core"
+    ]
   },
   "build": {
     "purpose": "test",

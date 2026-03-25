@@ -40,4 +40,10 @@ export const url = t.url;
 export const response = t.response;
 export const valid = t.valid;
 
+// Serialization
+export const serialize = t.serialize;
+export const serialise = t.serialise;
+export const deserialize = t.deserialize;
+export const deserialise = t.deserialise;
+
 export const defineAction = (handler) => handler;

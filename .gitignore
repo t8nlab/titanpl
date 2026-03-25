@@ -29,6 +29,7 @@ templates/*/server/src/actions_rust/
 titan-server
 
 # Test apps & outputs
+todo/
 test-apps/
 coverage/
 coverage-e2e/

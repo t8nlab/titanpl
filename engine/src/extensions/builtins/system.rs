@@ -1,4 +1,5 @@
 use v8;
+use v8::{ValueSerializerHelper, ValueDeserializerHelper};
 use std::sync::OnceLock;
 use serde_json::Value;
 use crate::extensions::{v8_str, v8_to_string, throw, TitanRuntime, TitanAsyncOp};
@@ -18,6 +19,56 @@ pub fn get_http_client() -> &'static reqwest::Client {
             .build()
             .unwrap_or_else(|_| reqwest::Client::new())
     })
+}
+
+// --- V8 Serialization Built-ins ---
+
+struct TitanSerializerDelegate;
+impl v8::ValueSerializerImpl for TitanSerializerDelegate {
+    fn throw_data_clone_error<'s>(&self, scope: &mut v8::HandleScope<'s>, message: v8::Local<'s, v8::String>) {
+        let error = v8::Exception::error(scope, message);
+        scope.throw_exception(error);
+    }
+}
+
+struct TitanDeserializerDelegate;
+impl v8::ValueDeserializerImpl for TitanDeserializerDelegate {}
+
+pub fn native_serialize(scope: &mut v8::HandleScope, args: v8::FunctionCallbackArguments, mut retval: v8::ReturnValue) {
+    let value = args.get(0);
+    let context = scope.get_current_context();
+    let mut serializer = v8::ValueSerializer::new(scope, Box::new(TitanSerializerDelegate));
+    serializer.write_header();
+    
+    if let Some(true) = serializer.write_value(context, value) {
+        let bytes = serializer.release();
+        let len = bytes.len();
+        let bs = v8::ArrayBuffer::new_backing_store_from_boxed_slice(bytes.into_boxed_slice()).make_shared();
+        let ab = v8::ArrayBuffer::with_backing_store(scope, &bs);
+        if let Some(view) = v8::Uint8Array::new(scope, ab, 0, len) {
+            retval.set(view.into());
+        }
+    }
+}
+
+pub fn native_deserialize(scope: &mut v8::HandleScope, args: v8::FunctionCallbackArguments, mut retval: v8::ReturnValue) {
+    let arg = args.get(0);
+    if !arg.is_uint8_array() {
+        throw(scope, "deserialize expects Uint8Array");
+        return;
+    }
+    let view = v8::Local::<v8::Uint8Array>::try_from(arg).unwrap();
+    let len = view.byte_length();
+    let mut data = vec![0u8; len];
+    view.copy_contents(&mut data);
+
+    let context = scope.get_current_context();
+    let deserializer = v8::ValueDeserializer::new(scope, Box::new(TitanDeserializerDelegate), &data);
+    if let Some(true) = deserializer.read_header(context) {
+        if let Some(val) = deserializer.read_value(context) {
+            retval.set(val);
+        }
+    }
 }
 
 pub fn native_log(scope: &mut v8::HandleScope, args: v8::FunctionCallbackArguments, mut _retval: v8::ReturnValue) {
@@ -51,7 +102,7 @@ pub fn native_log(scope: &mut v8::HandleScope, args: v8::FunctionCallbackArgumen
         }
     }
     
-    let titan_str = blue("[Titan]");
+    let titan_str = blue("[TitanPL]");
     let log_msg = gray(&format!("\x1b[90mlog({})\x1b[0m\x1b[97m: {}\x1b[0m", action_name, parts.join(" ")));
     println!(
         "{} {}",

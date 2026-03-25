@@ -161,7 +161,21 @@ pub fn inject_external_extensions(scope: &mut v8::HandleScope, _global: v8::Loca
     let native_key = v8_str(scope, "__native");
     t_obj.set(scope, native_key.into(), native_helper.into());
 
-    for (_, ext) in registry {
+    for (name, ext) in registry {
+        // If it's a native extension, we automatically inject a Proxy to handle mapping
+        // This removes the need for manual JS mapping in index.js for simple native exports.
+        if ext.ext_type == "native" {
+            let proxy_script = format!(
+                "t['{}'] = new Proxy({{}}, {{ get: (target, prop) => {{ return (...args) => t.__native.call('{}', prop, args); }} }});",
+                name, name
+            );
+            let ps_v8 = v8_str(scope, &proxy_script);
+            let tc = &mut v8::TryCatch::new(scope);
+            if let Some(script) = v8::Script::compile(tc, ps_v8, None) {
+                script.run(tc);
+            }
+        }
+
         // Execute the extension's entry JS
         // This JS should call registerExtension(name, module)
         let wrapped_js = format!("(function(t) {{ {} }})(t)", ext.entry_js);
@@ -206,6 +220,24 @@ fn native_extension_call(scope: &mut v8::HandleScope, mut args: v8::FunctionCall
          return;
     }
 
+    // Read the actual request_id from V8 context — critical for resume routing
+    let req_id = {
+        let context = scope.get_current_context();
+        let global = context.global(scope);
+        let req_key = v8_str(scope, "__titan_req");
+        if let Some(req_obj_val) = global.get(scope, req_key.into()) {
+            if req_obj_val.is_object() {
+                let req_obj = req_obj_val.to_object(scope).unwrap();
+                let id_key = v8_str(scope, "__titan_request_id");
+                req_obj.get(scope, id_key.into()).unwrap().uint32_value(scope).unwrap_or(0)
+            } else { 0 }
+        } else { 0 }
+    };
+
+    if req_id != 0 {
+        runtime.drift_to_request.insert(drift_id, req_id);
+    }
+
     let (tx, rx) = tokio::sync::oneshot::channel::<super::WorkerAsyncResult>();
     
     let op = super::TitanAsyncOp::NativeCall {
@@ -217,7 +249,7 @@ fn native_extension_call(scope: &mut v8::HandleScope, mut args: v8::FunctionCall
     let req = super::AsyncOpRequest {
         op,
         drift_id,
-        request_id: 0, // Not tied to a specific request ID for now?
+        request_id: req_id,
         op_type: "native_call".to_string(),
         respond_tx: tx,
     };

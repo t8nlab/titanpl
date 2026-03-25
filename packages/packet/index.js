@@ -83,10 +83,19 @@ export async function build(root = process.cwd()) {
  * Release build (Production ready folder)
  */
 export async function release(root = process.cwd()) {
-  const dist = await build(root);
   const buildDir = path.join(root, "build");
 
-  // Read config
+  // Step 1: Pre-build (Production mode)
+  // Run production build to generate 'dist' folder
+  const dist = await build(root);
+
+  // Step 2: Clear or ensure build dir
+  if (fs.existsSync(buildDir)) {
+    fs.rmSync(buildDir, { recursive: true, force: true });
+  }
+  fs.mkdirSync(buildDir, { recursive: true });
+
+  // Step 3: Read config and files list
   let config = {};
   const configPath = fs.existsSync(path.join(root, "tanfig.json"))
     ? path.join(root, "tanfig.json")
@@ -100,49 +109,63 @@ export async function release(root = process.cwd()) {
     } catch (e) { }
   }
 
-  const filesToCopy = config.build && config.build.files ? config.build.files : ["public", "static", "db", "config", "tanfig.json", "titan.json"];
+  // Default files to copy from root
+  const defaultFiles = ["public", "static", "db", "config", "views", "auth"];
+  const userFiles = config.build && Array.isArray(config.build.files) ? config.build.files : [];
+  const filesToCopy = Array.from(new Set([...defaultFiles, ...userFiles]));
 
-  // Clear or ensure build dir
-  if (fs.existsSync(buildDir)) {
-    fs.rmSync(buildDir, { recursive: true, force: true });
-  }
-  fs.mkdirSync(buildDir, { recursive: true });
-
-  // 1. Copy dist
-  copyDir(dist, path.join(buildDir, "dist"));
-
-  // 2. Extra files/folders from root based on config
+  // Step 4: Copy Files & Folders from root and app folders to build
   for (const item of filesToCopy) {
+    // Check root first, then app/ folder
     const src = path.join(root, item);
+    const appSrc = path.join(root, "app", item);
+    const dest = path.join(buildDir, item);
+
     if (fs.existsSync(src)) {
-      const dest = path.join(buildDir, item);
       copyDir(src, dest);
+    } else if (fs.existsSync(appSrc)) {
+      const appDest = path.join(buildDir, "app", item);
+      copyDir(appSrc, appDest);
     }
   }
 
-  // 3. Copy package.json & tanfig.json
-  const pkgPath = path.join(root, "package.json");
-  if (fs.existsSync(pkgPath)) {
-    fs.copyFileSync(pkgPath, path.join(buildDir, "package.json"));
-  }
-  const tanfigPath = path.join(root, "tanfig.json");
-  if (fs.existsSync(tanfigPath)) {
-    fs.copyFileSync(tanfigPath, path.join(buildDir, "tanfig.json"));
-  }
-  const titanConfigPath = path.join(root, "titan.json");
-  if (fs.existsSync(titanConfigPath)) {
-    fs.copyFileSync(titanConfigPath, path.join(buildDir, "titan.json"));
+  // Step 5: Copy generated 'dist' (static routes/actions metadata)
+  copyDir(dist, path.join(buildDir, "dist"));
+
+  // Step 6: Copy essential config files (mandatory for runtime)
+  const essentials = ["package.json", "tanfig.json", "titan.json"];
+  for (const f of essentials) {
+    const src = path.join(root, f);
+    if (fs.existsSync(src)) {
+      fs.copyFileSync(src, path.join(buildDir, f));
+    }
   }
 
-  // 4. Create .env
+  // Step 7: Create .env for production
   fs.writeFileSync(path.join(buildDir, ".env"), "TITAN_DEV=0\n");
 
-  // 5. Extract extensions
+  // Step 8: Extract Extensions
   const extDir = path.join(buildDir, ".ext");
   fs.mkdirSync(extDir, { recursive: true });
 
   const nodeModules = path.join(root, "node_modules");
   if (fs.existsSync(nodeModules)) {
+    const localPkgs = path.resolve(root, "../../packages"); 
+    if (fs.existsSync(localPkgs)) {
+       const pkgs = fs.readdirSync(localPkgs);
+       for (const pkg of pkgs) {
+           const pkgPath = path.join(localPkgs, pkg);
+           const titanJsonPath = path.join(pkgPath, "titan.json");
+           if (fs.existsSync(titanJsonPath)) {
+               try {
+                   const config = JSON.parse(fs.readFileSync(titanJsonPath, "utf8"));
+                   const extName = config.name;
+                   const dest = path.join(extDir, extName.includes("/") ? extName : extName);
+                   copyDir(pkgPath, dest);
+               } catch(e) {}
+           }
+       }
+    }
     const findExtensions = (dir, depth = 0) => {
       if (depth > 2) return;
       if (!fs.existsSync(dir)) return;
@@ -164,6 +187,8 @@ export async function release(root = process.cwd()) {
               }
 
               const destPath = path.join(extDir, targetPkgName);
+              if (fs.existsSync(destPath)) continue; // Don't overwrite monorepo packages
+              
               fs.mkdirSync(path.dirname(destPath), { recursive: true });
 
               copyDir(fullPath, destPath, (src) => {
@@ -178,97 +203,64 @@ export async function release(root = process.cwd()) {
       }
     };
     findExtensions(nodeModules);
-  }
 
-  // 6. Copy Engine binaries
-  if (fs.existsSync(path.join(nodeModules, "@titanpl"))) {
-    const scopeDir = path.join(nodeModules, "@titanpl");
-    const folders = fs.readdirSync(scopeDir);
-    for (const folder of folders) {
-      if (folder.startsWith("engine-")) {
-        const engineDest = path.join(extDir, "@titanpl", folder);
-        copyDir(path.join(scopeDir, folder), engineDest);
-      }
-    }
-  }
-
-  // 7. Create node_modules junction to .ext for engine resolution
-  // If env is 'deploy' or 'production', we might want to skip this for a cleaner build
-  const buildEnv = config.build && (config.build.env || config.build.purpose) ? (config.build.env || config.build.purpose) : "test";
-
-  if (buildEnv !== "deploy" && buildEnv !== "production") {
-    const nmSymlink = path.join(buildDir, "node_modules");
-    if (!fs.existsSync(nmSymlink)) {
-      try {
-        // Junctions don't require admin on Windows
-        fs.symlinkSync(".ext", nmSymlink, "junction");
-      } catch (e) {
-        try {
-          fs.symlinkSync(".ext", nmSymlink, "dir");
-        } catch (e2) {
-          // Fallback or ignore if symlink creation is totally restricted
+    // Also copy engine binaries if they exist in node_modules
+    if (fs.existsSync(path.join(nodeModules, "@titanpl"))) {
+      const scopeDir = path.join(nodeModules, "@titanpl");
+      const folders = fs.readdirSync(scopeDir);
+      for (const folder of folders) {
+        if (folder.startsWith("engine-") || folder.startsWith("runtime-")) {
+          const engineDest = path.join(extDir, "@titanpl", folder);
+          copyDir(path.join(scopeDir, folder), engineDest);
         }
       }
     }
   }
 
-  // 8. Create 'titan' executable link in the build root for easy starting
+  // Step 9: Copy/Extract titan-server binary to build root
   const binName = process.platform === "win32" ? "titan-server.exe" : "titan-server";
   let engineBin = null;
 
-  // Strategy A: Search in the .ext we just populated
-  const findInExt = (dir) => {
-    if (!fs.existsSync(dir)) return null;
-    const entries = fs.readdirSync(dir);
-    for (const entry of entries) {
-      const full = path.join(dir, entry);
-      if (fs.statSync(full).isDirectory()) {
-        // Check both pkgRoot/bin/titan-server and pkgRoot/titan-server (some layouts differ)
-        const p1 = path.join(full, "bin", binName);
-        if (fs.existsSync(p1)) return p1;
-        const p2 = path.join(full, binName);
-        if (fs.existsSync(p2)) return p2;
-
-        const found = findInExt(full);
-        if (found) return found;
-      }
-    }
-    return null;
+  // Search in .ext
+  const searchBin = (dir) => {
+     if (!fs.existsSync(dir)) return null;
+     const entries = fs.readdirSync(dir);
+     for (const e of entries) {
+         const full = path.join(dir, e);
+         if (fs.statSync(full).isDirectory()) {
+             const p1 = path.join(full, "bin", binName);
+             if (fs.existsSync(p1)) return p1;
+             const p2 = path.join(full, binName);
+             if (fs.existsSync(p2)) return p2;
+             const found = searchBin(full);
+             if (found) return found;
+         }
+     }
+     return null;
   };
+  engineBin = searchBin(extDir);
 
-  engineBin = findInExt(extDir);
-
-  // Strategy B: Monorepo fallback (if building inside the titanpl repo)
+  // Fallback to monorepo binary (if building in repo)
   if (!engineBin) {
-    let current = root;
-    for (let i = 0; i < 5; i++) {
-      const potential = path.join(current, "engine", "target", "release", binName);
-      if (fs.existsSync(potential)) {
-        engineBin = potential;
-        break;
-      }
-      const parent = path.dirname(current);
-      if (parent === current) break;
-      current = parent;
+    let curr = root;
+    for(let i=0; i<3; i++) {
+        const potential = path.join(curr, "engine", "target", "release", binName);
+        if (fs.existsSync(potential)) {
+            engineBin = potential;
+            break;
+        }
+        curr = path.dirname(curr);
     }
   }
 
   if (engineBin) {
-    const linkName = binName; // Keep the original name 'titan-server'
-    const linkPath = path.join(buildDir, linkName);
-
-    if (!fs.existsSync(linkPath)) {
-      try {
-        // Always copy the binary to the root for maximum portability in the 'build' folder
-        fs.copyFileSync(engineBin, linkPath);
-        if (process.platform !== "win32") {
-          fs.chmodSync(linkPath, 0o755);
-        }
-      } catch (e) {
-        console.error(`[Titan] Failed to create titan binary: ${e.message}`);
-      }
-    }
+    const destBin = path.join(buildDir, binName);
+    fs.copyFileSync(engineBin, destBin);
+    if (process.platform !== "win32") fs.chmodSync(destBin, 0o755);
   }
+
+  // Step 10: In production builds, we DON'T use symlinks for node_modules.
+  // Instead, the engine knows to look in .ext.
 
   return buildDir;
 }

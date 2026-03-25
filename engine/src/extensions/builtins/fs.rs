@@ -14,8 +14,9 @@ pub fn native_read_sync(scope: &mut v8::HandleScope, args: v8::FunctionCallbackA
     
     if let Ok(target) = joined.canonicalize() {
         if target.starts_with(&root.canonicalize().unwrap_or(root.clone())) {
-            match std::fs::read_to_string(&target) {
-                Ok(content) => {
+            match std::fs::read(&target) {
+                Ok(bytes) => {
+                    let content = String::from_utf8_lossy(&bytes);
                     let v8_content = v8_str(scope, &content);
                     retval.set(v8_content.into());
                 },

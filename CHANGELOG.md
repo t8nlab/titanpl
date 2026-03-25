@@ -1,4 +1,66 @@
 # Changelog - Titan Planet ⏣
+
+## [7.0.0] - 2026-03-25
+
+### Is TitanPL Secure?
+
+TitanPL is built with security as a core architectural pillar. By leveraging Rust's safety guarantees and the V8 sandbox, TitanPL provides a defense-in-depth model that is both fast and robust.
+
+---
+
+### 🛡️ The Security Model
+
+TitanPL uses a tiered security model to isolate untrusted code and sensitive operations.
+
+### 🧠 V8 Sandboxing
+
+JavaScript actions run inside an isolated V8 environment. Memory is managed safely, preventing buffer overflows and direct host access.
+
+### 🔒 Out-of-Process Native
+
+Native extensions execute in a separate process space. A crash or exploit in an extension cannot compromise the core engine.
+
+---
+
+### 🔐 Gravity Policy (Mandatory Authorization)
+
+The most distinctive security feature of TitanPL is the **Gravity Policy**. Unlike traditional NPM ecosystems where any package can execute native code upon installation, TitanPL forces a **Zero-Trust** approach.
+
+### Key Pillars:
+
+1. **Hard-Blocked by Default**  
+   Any native extension found in `node_modules` is ignored unless explicitly listed.
+
+2. **Explicit Permissions**  
+   You must authorize WASM and Native extensions in your `tanfig.json`.
+
+3. **No Post-Install Hooks**  
+   TitanPL does not execute arbitrary `scripts` during installation, preventing supply-chain attacks.
+
+```json
+{
+  "extensions": {
+    "allowWasm": false,
+    "allowNative": ["@titanpl/core"]
+  }
+}
+```
+---
+
+## 📊 Runtime Security Comparison
+
+How TitanPL compares against mainstream JavaScript runtimes.
+
+| Security Feature        | Node.js                  | Deno                     | Gravity                |
+|------------------------|--------------------------|--------------------------|--------------------------|
+| Memory Safety (Core)   | Manual (C/C++) ❌        | Rust Core ✅             | Rust Core ✅             |
+| Native Sandbox         | None ❌                  | Permission-based ⚠️      | Process-Isolated ✅      |
+| Post-install Scripts   | Allowed (Risk) ❌        | None ✅                  | Blocked (Gravity) ✅     |
+| Binary Verification    | Partial ⚠️               | Partial ⚠️               | Signed & Static ✅       |
+| Extension Isolation    | Shared Process ❌        | Partial ⚠️               | Out-of-Process ✅        |
+
+> Gravity designed as a **zero-trust runtime**, not just a JavaScript engine.
+
 ## [6.0.0] - 2026-03-20
 ### 🚀 MAJOR RELEASE: WebSocket Support & Production Stability
 This version introduces native, action-driven WebSockets and significant runtime refactoring, making Titan Planet more stable and capable for real-time applications.

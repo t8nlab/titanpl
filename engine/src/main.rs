@@ -582,7 +582,7 @@ async fn main() -> Result<()> {
     if !precomputed.is_empty() {
         println!(
             "{} {} reply route(s) pre-computed",
-            blue("[Titan]"),
+            blue("[TitanPL]"),
             precomputed.len()
         );
     }

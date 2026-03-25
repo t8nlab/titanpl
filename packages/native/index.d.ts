@@ -31,8 +31,13 @@ export interface ShareContext {
 }
 
 // Add more as needed based on native/index.js
+export interface WebSocketModule {
+    send(socketId: string, message: string): void;
+    broadcast(message: string): void;
+}
+
 export const db: any;
-export const ws: any;
+export const ws: WebSocketModule;
 export const path: any;
 export const jwt: any;
 export const password: any;
@@ -49,3 +54,13 @@ export const time: any;
 export const url: any;
 export const response: any;
 export const valid: any;
+
+// Serialization
+/** Binary-serializes a JavaScript value using V8's fast internal format. */
+export function serialize(value: any): Uint8Array;
+/** Binary-serializes a JavaScript value using V8's fast internal format. Alias for serialize. */
+export function serialise(value: any): Uint8Array;
+/** Deserializes a Uint8Array back into its original JavaScript value/object. */
+export function deserialize(buffer: Uint8Array): any;
+/** Deserializes a Uint8Array back into its original JavaScript value/object. Alias for deserialize. */
+export function deserialise(buffer: Uint8Array): any;

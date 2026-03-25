@@ -234,6 +234,34 @@ export const password: typeof t.password;
 export const db: typeof t.db;
 
 /**
+ * WebSocket communication utilities.
+ *
+ * Re-exported from the `t` global for module-style imports.
+ * @see {@link TitanRuntimeUtils.ws} for full documentation.
+ */
+export const ws: typeof t.ws;
+
+/**
+ * Binary serialization using V8's fast format.
+ *
+ * Re-exported from the `t` global for module-style imports.
+ * @see {@link TitanRuntimeUtils.serialize}
+ */
+export const serialize: typeof t.serialize;
+/** Alias for serialize. @see {@link TitanRuntimeUtils.serialise} */
+export const serialise: typeof t.serialise;
+
+/**
+ * Binary deserialization for V8 buffers.
+ *
+ * Re-exported from the `t` global for module-style imports.
+ * @see {@link TitanRuntimeUtils.deserialize}
+ */
+export const deserialize: typeof t.deserialize;
+/** Alias for deserialize. @see {@link TitanRuntimeUtils.deserialise} */
+export const deserialise: typeof t.deserialise;
+
+/**
  * Async file system operations (read, write, mkdir, stat, etc.).
  *
  * Re-exported from the `t` global for module-style imports.
@@ -647,6 +675,55 @@ declare global {
             body?: string;
             error?: string;
         }>;
+        
+        /**
+         * Fast binary serialization using V8's internal value format.
+         *
+         * Highly efficient for complex JavaScript objects including `Date`, `Map`, 
+         * `Set`, and `TypedArrays`. The resulting `Uint8Array` is stable and
+         * can be safely stored in databases (e.g. `t.ls`) or transmitted.
+         *
+         * @param value - The JavaScript value/object to serialize.
+         * @returns A `Uint8Array` containing the binary-serialized representation.
+         *
+         * @example
+         * ```js
+         * const complex = { date: new Date(), map: new Map([["a", 1]]) };
+         * const bytes = t.serialize(complex);
+         * // Store bytes in database or pass to another action
+         * ```
+         */
+        serialize(value: any): Uint8Array;
+
+        /** 
+         * Binary serialization. Alias for `t.serialize`. 
+         * @see {@link TitanRuntimeUtils.serialize}
+         */
+        serialise(value: any): Uint8Array;
+
+        /**
+         * Deserializes a binary buffer back into its original JavaScript value.
+         *
+         * Restores full object fidelity including native types like `Date` and `Buffer`.
+         * Performance is significantly faster than `JSON.parse` for large objects.
+         *
+         * @param buffer - A `Uint8Array` created by `t.serialize()`.
+         * @returns The restored JavaScript value or object.
+         * @throws If the buffer is invalid or contains corrupted V8 header data.
+         *
+         * @example
+         * ```js
+         * const restored = t.deserialize(bytes);
+         * console.log(restored.date instanceof Date); // true
+         * ```
+         */
+        deserialize(buffer: Uint8Array): any;
+
+        /** 
+         * Binary deserialization. Alias for `t.deserialize`. 
+         * @see {@link TitanRuntimeUtils.deserialize}
+         */
+        deserialise(buffer: Uint8Array): any;
 
         /**
          * WebSocket communication utilities.

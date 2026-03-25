@@ -1,6 +1,6 @@
 {
   "name": "titanpl",
-  "version": "7.0.0-beta",
+  "version": "7.0.0",
   "description": "Titan Planet is a JavaScript-first backend framework that embeds JS actions into a Rust + Axum server and ships as a single native binary. Routes are compiled to static metadata; only actions run in the embedded JS runtime. No Node.js. No event loop in production.",
   "license": "ISC",
   "author": "ezetgalaxy",
@@ -12,10 +12,6 @@
     "t8n-dev": "node ../../packages/cli/index.js",
     "test-start": "taskkill /f /im titan-server.exe; ../../engine/target/release/titan-server.exe run dist"
   },
-  "workspaces": [
-    "packages/*",
-    "test-apps/*"
-  ],
   "files": [
     "index.js",
     "packages/",
@@ -78,7 +74,7 @@
     "test:all": "vitest run && vitest run --config vitest.config.e2e.ts"
   },
   "dependencies": {
-    "@titanpl/core": "latest",
+    "@titanpl/core": "7.0.0",
     "@titanpl/node": "latest",
     "chokidar": "^5.0.0",
     "esbuild": "^0.27.2",

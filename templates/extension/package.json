@@ -1,6 +1,6 @@
 {
   "name": "my-extension",
-  "version": "7.0.0-beta",
+  "version": "7.0.0",
   "description": "A high-performance TitanPL extension.",
   "type": "module",
   "main": "index.js",
@@ -11,6 +11,6 @@
     "README.md"
   ],
   "dependencies": {
-    "@titanpl/sdk": "7.0.0-beta"
+    "@titanpl/sdk": "7.0.0"
   }
 }
