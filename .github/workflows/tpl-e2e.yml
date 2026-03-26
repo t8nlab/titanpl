@@ -3,8 +3,8 @@ name: TitanPl Development Env Testing
 on:
   push:
     branches: [ main ]
-  paths-ignore:
-    - 'status/**'
+    paths-ignore:
+      - 'status/**'
 
 permissions:
   contents: write
