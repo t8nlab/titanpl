@@ -1,105 +1,155 @@
-use std::process::{Child, Command, Stdio, ChildStdin, ChildStdout};
+use std::process::{Command, Stdio, Child, ChildStdin, ChildStdout};
 use std::io::{Write, BufReader, BufRead};
 use std::sync::{Mutex, Arc};
 use std::collections::HashMap;
 use serde_json::{json, Value};
 use std::path::PathBuf;
-use crate::utils::{blue, yellow};
 
-pub static HOSTS: Mutex<Option<HashMap<String, Arc<NativeHost>>>> = Mutex::new(None);
+static HOSTS: Mutex<Option<HashMap<String, Arc<Mutex<NativeHostState>>>>> = Mutex::new(None);
 
-pub struct NativeHost {
-    pub name: String,
-    pub path: PathBuf,
-    pub stdin: Mutex<ChildStdin>,
-    pub reader: Mutex<BufReader<ChildStdout>>,
-    pub child: Mutex<Child>,
+struct NativeHostState {
+    name: String,
+    path: PathBuf,
+    child: Child,
+    stdin: ChildStdin,
+    reader: BufReader<ChildStdout>,
 }
 
-impl NativeHost {
-    pub fn new(name: String, path: PathBuf) -> Self {
-        let mut child = Command::new(std::env::current_exe().expect("Failed to get current executable path"))
-            .arg("native-host")
-            .arg(&path)
-            .stdin(Stdio::piped())
-            .stdout(Stdio::piped())
-            .spawn()
-            .expect("Failed to spawn NativeHost");
+fn spawn_child(path: &PathBuf) -> Option<(Child, ChildStdin, BufReader<ChildStdout>)> {
+    let canonical = std::fs::canonicalize(path).unwrap_or(path.clone());
+    let dll_dir   = canonical.parent().unwrap_or(&canonical).to_path_buf();
 
-        let stdin = child.stdin.take().expect("Failed to open stdin");
-        let stdout = child.stdout.take().expect("Failed to open stdout");
+    // Strip Windows UNC prefix so it works as a CLI arg
+    let path_str = {
+        let s = path.to_string_lossy();
+        if s.starts_with(r"\\?\") { s[4..].to_string() } else { s.to_string() }
+    };
 
-        Self { 
-            name, 
-            path, 
-            stdin: Mutex::new(stdin),
-            // Wrap stdout in a persistent BufReader ONCE
-            reader: Mutex::new(BufReader::new(stdout)),
-            child: Mutex::new(child)
+    let project_root_raw = super::PROJECT_ROOT.get()
+        .cloned()
+        .unwrap_or_else(|| std::path::PathBuf::from("."));
+
+    let project_root = {
+        let s = project_root_raw.to_string_lossy();
+        if s.starts_with(r"\\?\") {
+            std::path::PathBuf::from(s[4..].to_string())
+        } else {
+            project_root_raw
+        }
+    };
+
+    let exe = std::env::current_exe().ok()?;
+    let mut cmd = Command::new(&exe);
+    cmd.arg("native-host")
+       .arg(&path_str)
+       .current_dir(&project_root)
+       .stdin(Stdio::piped())
+       .stdout(Stdio::piped())
+       .stderr(Stdio::inherit());
+
+    // Let the DLL find its own dependencies
+    if let Some(p) = std::env::var_os("PATH") {
+        let mut paths = std::env::split_paths(&p).collect::<Vec<_>>();
+        paths.insert(0, dll_dir);
+        if let Ok(new_path) = std::env::join_paths(paths) {
+            cmd.env("PATH", new_path);
         }
     }
 
-    pub fn call(&self, function: &str, params: Vec<Value>) -> Value {
-        // 1. Build and send request
-        let request = json!({
-            "function": function,
-            "params": params
-        });
+    let mut child = cmd.spawn().ok()?;
+    let stdin  = child.stdin.take()?;
+    let stdout = child.stdout.take()?;
+    Some((child, stdin, BufReader::new(stdout)))
+}
 
-        let req_str = format!("{}\n", serde_json::to_string(&request).unwrap());
-        
-        {
-            let mut stdin = self.stdin.lock().unwrap();
-            stdin.write_all(req_str.as_bytes()).unwrap();
-            stdin.flush().unwrap();
+impl NativeHostState {
+    fn new(name: String, path: PathBuf) -> Option<Self> {
+        let (child, stdin, reader) = spawn_child(&path)?;
+        Some(Self { name, path, child, stdin, reader })
+    }
+
+    /// Send one JSON request, read one JSON response line.
+    /// Returns Err(()) if the pipe is dead (caller should respawn).
+    fn call_once(&mut self, request: &Value) -> Result<Value, ()> {
+        let req_str = format!("{}\n", serde_json::to_string(request).map_err(|_| ())?);
+        self.stdin.write_all(req_str.as_bytes()).map_err(|_| ())?;
+        self.stdin.flush().map_err(|_| ())?;
+
+        let mut line = String::new();
+        match self.reader.read_line(&mut line) {
+            Ok(0) => Err(()), // EOF — child exited
+            Ok(_) => serde_json::from_str(line.trim()).map_err(|_| ()),
+            Err(_) => Err(()),
         }
+    }
 
-        // 2. Read one line from the persistent BufReader
-        let mut response = String::new();
-        let mut reader = self.reader.lock().unwrap();
-        
-        match reader.read_line(&mut response) {
-            Ok(0) => {
-                return json!({"error": "NativeHost closed connection (EOF)"});
-            },
-            Ok(_) => {},
-            Err(e) => {
-                return json!({"error": format!("Error reading from NativeHost: {}", e)});
+    /// Respawn the child process (called after a crash).
+    fn respawn(&mut self) -> bool {
+        let _ = self.child.kill();
+        let _ = self.child.wait();
+        match spawn_child(&self.path) {
+            Some((child, stdin, reader)) => {
+                self.child  = child;
+                self.stdin  = stdin;
+                self.reader = reader;
+                true
             }
+            None => false,
         }
-        
-        serde_json::from_str(response.trim())
-            .unwrap_or_else(|_| json!({"error": format!("Invalid JSON from NativeHost: {}", response)}))
     }
 }
 
 pub async fn handle_native_call(extension: String, function: String, params: Vec<Value>) -> Value {
-    // 1. Get registry to find the extension path
-    let registry_guard = super::external::REGISTRY.lock().unwrap();
-    let registry = registry_guard.as_ref().unwrap();
-    let ext_def = match registry.extensions.get(&extension) {
-        Some(d) => d,
-        None => return json!({"error": format!("Extension '{}' not found", extension)}),
+    handle_native_call_sync(extension, function, params)
+}
+
+pub fn handle_native_call_sync(extension: String, function: String, params: Vec<Value>) -> Value {
+    // Resolve DLL path from registry
+    let native_path = {
+        let guard = super::external::REGISTRY.lock().unwrap();
+        let reg   = match guard.as_ref() {
+            Some(r) => r,
+            None    => return json!({ "error": "Registry not initialized" }),
+        };
+        let def = match reg.extensions.get(&extension) {
+            Some(d) => d,
+            None    => return json!({ "error": format!("Extension '{}' not found", extension) }),
+        };
+        match &def.native_path {
+            Some(p) => p.clone(),
+            None    => return json!({ "error": format!("'{}' is not a native extension", extension) }),
+        }
     };
 
-    let native_path = match &ext_def.native_path {
-        Some(p) => p,
-        None => return json!({"error": format!("Extension '{}' is not a native extension", extension)}),
-    };
-
-    // 2. Get or spawn host
+    // Get or spawn the host
     let mut hosts_guard = HOSTS.lock().unwrap();
-    if hosts_guard.is_none() {
-        *hosts_guard = Some(HashMap::new());
-    }
-    let hosts = hosts_guard.as_mut().unwrap();
-
-    let host = hosts.entry(extension.clone()).or_insert_with(|| {
-        Arc::new(NativeHost::new(extension.clone(), native_path.clone()))
-    });
-
-    let host_clone = host.clone();
+    let hosts = hosts_guard.get_or_insert_with(HashMap::new);
+    let state_arc = hosts
+        .entry(extension.clone())
+        .or_insert_with(|| {
+            let state = NativeHostState::new(extension.clone(), native_path.clone())
+                .expect("Failed to spawn NativeHost");
+            Arc::new(Mutex::new(state))
+        })
+        .clone();
     drop(hosts_guard);
 
-    host_clone.call(&function, params)
+    let request = json!({ "function": function, "params": params });
+
+    let mut state = state_arc.lock().unwrap();
+
+    // Try the call; if it fails, respawn once and retry
+    match state.call_once(&request) {
+        Ok(val) => val,
+        Err(()) => {
+            if state.respawn() {
+                match state.call_once(&request) {
+                    Ok(val) => val,
+                    Err(()) => json!({ "error": format!("NativeHost crashed on '{}'", function) }),
+                }
+            } else {
+                json!({ "error": "Failed to respawn NativeHost" })
+            }
+        }
+    }
 }

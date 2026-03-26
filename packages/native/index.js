@@ -39,6 +39,7 @@ export const time = t.time;
 export const url = t.url;
 export const response = t.response;
 export const valid = t.valid;
+export const drift = globalThis.drift;
 
 // Serialization
 export const serialize = t.serialize;

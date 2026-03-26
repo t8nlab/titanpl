@@ -1,5 +1,25 @@
 # Changelog - Titan Planet ⏣
 
+## [7.0.1] - 2026-03-26
+
+### 🚀 Drift Ergonomics & TypeScript Stability
+
+This patch release improves the developer experience when using Titan's deterministic async engine (`drift()`) and resolves pesky IDE type conflicts.
+
+### ✨ Highlights
+
+#### **Clearer `drift()` Boundaries (Sync vs. Async)**
+We have significantly improved our native typings and documentation to clearly delineate between operations that require asynchronous suspension (`drift()`) and those that are strictly synchronous.
+
+- **No More Unnecessary Suspensions**: Standardized the API so synchronous methods like `t.crypto.randomBytes()`, `t.ls.*`, and `t.buffer.*` execute instantly on the V8 isolate without invoking the `drift()` background mechanism, eliminating unnecessary async overhead.
+- **Comprehensive JSDocs**: Full inline documentation with explicit examples for `@titanpl/native` functions, allowing you to instantly see whether a function returns a `Promise` (and thus needs `drift()`) right in your IDE.
+
+#### **IDE & Module Improvements**
+- **Type Declaration Fixes**: Resolved the _"Cannot redeclare block-scoped variable 'process'"_ compiler error in `t.native.d.ts`. Our Node-compatible `process` shim now gracefully coexists with `@types/node` and other global definitions.
+- **Modular ESM Interfaces**: Hardened `.d.ts` definitions to ensure all IDE suggestions and exports structure correctly as `import { functionName } from "@titanpl/native"`.
+
+---
+
 ## [7.0.0] - 2026-03-25
 
 ### Is TitanPL Secure?

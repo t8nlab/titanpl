@@ -122,24 +122,36 @@ pub fn load_project_extensions(mut root: PathBuf) {
                 } else { None };
                 
                 let native_path = if has_native {
-                     if let Some(native_map) = config.native.as_object() {
+                    let mut path = None;
+                    if let Some(native_map) = config.native.as_object() {
                         let platform = if cfg!(target_os = "windows") { "windows" } else if cfg!(target_os = "macos") { "macos" } else { "linux" };
-                        native_map.get(platform).and_then(|v| v.as_str()).map(|p| dir.join(p))
-                     } else if let Some(native_obj) = config.native.get("path").and_then(|v| v.as_str()) {
-                         // Compatibility for core extension format
-                        Some(dir.join(native_obj))
-                     } else { None }
+                        path = native_map.get(platform).and_then(|v| v.as_str()).map(|p| dir.join(p));
+                        
+                        if path.is_none() {
+                            // Fallback to "path" key (Core extension format)
+                            path = native_map.get("path").and_then(|v| v.as_str()).map(|p| dir.join(p));
+                        }
+                    }
+                    path
                 } else { None };
+
+                let final_type = if is_native {
+                    "native"
+                } else if is_wasm {
+                    "wasm"
+                } else {
+                    "js"
+                };
 
                 extensions.insert(config.name.clone(), ExtensionDef {
                     name: config.name.clone(),
-                    ext_type: config.r#type.clone(),
+                    ext_type: final_type.to_string(),
                     entry_js,
                     wasm_path,
                     native_path,
                 });
 
-                println!("{} {} {} [{}]", blue("[TitanPL]"), green("Loaded:"), config.name, config.r#type.to_uppercase());
+                println!("{} {} {} [{}]", blue("[TitanPL]"), green("Loaded:"), config.name, final_type.to_uppercase());
             }
         }
     }
@@ -152,22 +164,37 @@ pub fn inject_external_extensions(scope: &mut v8::HandleScope, _global: v8::Loca
         guard.as_ref().map(|r| r.extensions.clone()).unwrap_or_default()
     } else { return; };
 
-    // Inject __native helper for t.__native.call
+    // Inject __native helper for t.__native.call/call_meta
     let native_helper = v8::Object::new(scope);
+    
     let call_fn = v8::Function::new(scope, native_extension_call).unwrap();
     let call_key = v8_str(scope, "call");
     native_helper.set(scope, call_key.into(), call_fn.into());
+    
+    let call_meta_fn = v8::Function::new(scope, native_extension_call_meta).unwrap();
+    let call_meta_key = v8_str(scope, "call_meta");
+    native_helper.set(scope, call_meta_key.into(), call_meta_fn.into());
     
     let native_key = v8_str(scope, "__native");
     t_obj.set(scope, native_key.into(), native_helper.into());
 
     for (name, ext) in registry {
-        // If it's a native extension, we automatically inject a Proxy to handle mapping
-        // This removes the need for manual JS mapping in index.js for simple native exports.
         if ext.ext_type == "native" {
+            // PROXY: Synchronous by default, with .drift() for asynchronous offloading if desired.
+            // This gives developers free will: no auto-drift, but drift() still works.
             let proxy_script = format!(
-                "t['{}'] = new Proxy({{}}, {{ get: (target, prop) => {{ return (...args) => t.__native.call('{}', prop, args); }} }});",
-                name, name
+                "t['{}'] = new Proxy({{}}, {{ 
+                    _cache: new Map(),
+                    get: function(target, prop) {{ 
+                        if (typeof prop !== 'string') return target[prop];
+                        if (this._cache.has(prop)) return this._cache.get(prop);
+                        const fn = (...args) => t.__native.call('{0}', prop, args); 
+                        fn.drift = (...args) => t.__native.call_meta('{0}', prop, args); 
+                        this._cache.set(prop, fn);
+                        return fn; 
+                    }} 
+                }});",
+                name
             );
             let ps_v8 = v8_str(scope, &proxy_script);
             let tc = &mut v8::TryCatch::new(scope);
@@ -177,7 +204,6 @@ pub fn inject_external_extensions(scope: &mut v8::HandleScope, _global: v8::Loca
         }
 
         // Execute the extension's entry JS
-        // This JS should call registerExtension(name, module)
         let wrapped_js = format!("(function(t) {{ {} }})(t)", ext.entry_js);
         let wrapped_js_str = v8_str(scope, &wrapped_js);
         let tc = &mut v8::TryCatch::new(scope);
@@ -187,10 +213,8 @@ pub fn inject_external_extensions(scope: &mut v8::HandleScope, _global: v8::Loca
     }
 }
 
-fn native_extension_call(scope: &mut v8::HandleScope, mut args: v8::FunctionCallbackArguments, mut retval: v8::ReturnValue) {
-    let runtime_ptr = unsafe { args.get_isolate() }.get_data(0) as *mut TitanRuntime;
-    let runtime = unsafe { &mut *runtime_ptr };
-
+/// DEFAULT: Synchronous Native Call (No Replay/Suspension)
+fn native_extension_call(scope: &mut v8::HandleScope, args: v8::FunctionCallbackArguments, mut retval: v8::ReturnValue) {
     let ext_name = args.get(0).to_rust_string_lossy(scope);
     let fn_name = args.get(1).to_rust_string_lossy(scope);
     let fn_args_val = args.get(2);
@@ -204,73 +228,38 @@ fn native_extension_call(scope: &mut v8::HandleScope, mut args: v8::FunctionCall
         }
     }
 
-    runtime.drift_counter += 1;
-    let drift_id = runtime.drift_counter;
+    let result = crate::extensions::native_host_bridge::handle_native_call_sync(ext_name, fn_name, params);
+    retval.set(super::json_to_v8(scope, &result));
+}
 
-    // --- REPLAY CHECK ---
-    if let Some(res) = runtime.completed_drifts.get(&drift_id) {
-         let json_str = serde_json::to_string(res).unwrap_or_else(|_| "null".to_string());
-         let v8_str = v8::String::new(scope, &json_str).unwrap();
-         let mut try_catch = v8::TryCatch::new(scope);
-         if let Some(val) = v8::json::parse(&mut try_catch, v8_str) {
-             retval.set(val);
-         } else {
-             retval.set(v8::null(&mut try_catch).into());
-         }
-         return;
-    }
+/// METADATA: Returns an Op description for use with drift()
+fn native_extension_call_meta(scope: &mut v8::HandleScope, args: v8::FunctionCallbackArguments, mut retval: v8::ReturnValue) {
+    let ext_name = args.get(0).to_rust_string_lossy(scope);
+    let fn_name = args.get(1).to_rust_string_lossy(scope);
+    let fn_args_val = args.get(2);
 
-    // Read the actual request_id from V8 context — critical for resume routing
-    let req_id = {
-        let context = scope.get_current_context();
-        let global = context.global(scope);
-        let req_key = v8_str(scope, "__titan_req");
-        if let Some(req_obj_val) = global.get(scope, req_key.into()) {
-            if req_obj_val.is_object() {
-                let req_obj = req_obj_val.to_object(scope).unwrap();
-                let id_key = v8_str(scope, "__titan_request_id");
-                req_obj.get(scope, id_key.into()).unwrap().uint32_value(scope).unwrap_or(0)
-            } else { 0 }
-        } else { 0 }
-    };
-
-    if req_id != 0 {
-        runtime.drift_to_request.insert(drift_id, req_id);
-    }
-
-    let (tx, rx) = tokio::sync::oneshot::channel::<super::WorkerAsyncResult>();
+    let obj = v8::Object::new(scope);
+    let async_key = v8_str(scope, "__titanAsync");
+    let async_val = v8::Boolean::new(scope, true);
+    obj.set(scope, async_key.into(), async_val.into());
     
-    let op = super::TitanAsyncOp::NativeCall {
-        extension: ext_name,
-        function: fn_name,
-        params,
-    };
+    let type_key = v8_str(scope, "type");
+    let type_val = v8_str(scope, "native_call");
+    obj.set(scope, type_key.into(), type_val.into());
     
-    let req = super::AsyncOpRequest {
-        op,
-        drift_id,
-        request_id: req_id,
-        op_type: "native_call".to_string(),
-        respond_tx: tx,
-    };
-    
-    if let Err(e) = runtime.global_async_tx.try_send(req) {
-         println!("[TitanPL] NativeCall Failed to queue: {}", e);
-         retval.set(v8::null(scope).into());
-         return;
-    }
+    let data_obj = v8::Object::new(scope);
+    let ext_key = v8_str(scope, "extension");
+    let ext_val = v8_str(scope, &ext_name);
+    data_obj.set(scope, ext_key.into(), ext_val.into());
 
-    let tokio_handle = runtime.tokio_handle.clone();
-    let worker_tx = runtime.worker_tx.clone();
-    
-    tokio_handle.spawn(async move {
-        if let Ok(res) = rx.await {
-            let _ = worker_tx.send(crate::runtime::WorkerCommand::Resume {
-                drift_id,
-                result: res,
-            });
-        }
-    });
+    let func_key = v8_str(scope, "function");
+    let func_val = v8_str(scope, &fn_name);
+    data_obj.set(scope, func_key.into(), func_val.into());
 
-    throw(scope, "__SUSPEND__");
+    let params_key = v8_str(scope, "params");
+    data_obj.set(scope, params_key.into(), fn_args_val);
+    
+    let data_key = v8_str(scope, "data");
+    obj.set(scope, data_key.into(), data_obj.into());
+    retval.set(obj.into());
 }

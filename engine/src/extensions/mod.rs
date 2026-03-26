@@ -352,6 +352,36 @@ pub fn v8_to_json<'s>(
     serde_json::Value::Null
 }
 
+/// Convert a serde_json::Value to v8::Local<v8::Value>.
+/// Uses V8's native JSON.parse for optimal performance.
+#[inline]
+pub fn json_to_v8<'s>(
+    scope: &mut v8::HandleScope<'s>,
+    value: &serde_json::Value,
+) -> v8::Local<'s, v8::Value> {
+    match value {
+        serde_json::Value::Null => v8::null(scope).into(),
+        serde_json::Value::Bool(b) => v8::Boolean::new(scope, *b).into(),
+        serde_json::Value::Number(n) => {
+            let n_f64 = n.as_f64().unwrap_or(0.0);
+            v8::Number::new(scope, n_f64).into()
+        }
+        serde_json::Value::String(s) => v8_str(scope, s).into(),
+        _ => {
+            // For arrays and objects: use V8's native JSON.parse
+            let json_str = serde_json::to_string(value).unwrap_or_else(|_| "null".to_string());
+            let v8_str = v8::String::new(scope, &json_str).unwrap();
+            
+            let val = {
+                let tc = &mut v8::TryCatch::new(scope);
+                v8::json::parse(tc, v8_str)
+            };
+            
+            val.unwrap_or_else(|| v8::null(scope).into())
+        }
+    }
+}
+
 /// Recursive fallback for v8_to_json (used when JSON.stringify fails).
 fn v8_to_json_recursive<'s>(
     scope: &mut v8::HandleScope<'s>,

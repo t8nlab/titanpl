@@ -1,6 +1,6 @@
 {
   "name": "@titanpl/native",
-  "version": "7.0.0",
+  "version": "7.0.1",
   "description": "Titan native utilities package",
   "type": "module",
   "keywords": [

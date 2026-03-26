@@ -38,10 +38,23 @@ async function buildWasmExtension(titanJson) {
     try {
         // We assume wasm-pack or similar is used, or just bare cargo with wasm32 target
         // The spec mentions: native/pkg/my_ext.wasm, which is wasm-pack's default
-        execSync('wasm-pack build --target web', { cwd: nativeDir, stdio: 'inherit' });
+        console.log(chalk.gray("  Running wasm-pack..."));
+        execSync('wasm-pack build --target web --no-typescript', { cwd: nativeDir, stdio: 'ignore' });
     } catch (err) {
-        console.log(chalk.red("✖ Wasm compilation failed. Make sure 'wasm-pack' is installed."));
-        return;
+        console.log(chalk.yellow("! wasm-pack failed, attempting raw cargo build..."));
+        try {
+            execSync('cargo build --target wasm32-unknown-unknown --release', { cwd: nativeDir, stdio: 'ignore' });
+            const pkgDir = path.join(nativeDir, 'pkg');
+            if (!fs.existsSync(pkgDir)) fs.mkdirSync(pkgDir);
+            
+            const targetWasm = path.join(nativeDir, `target/wasm32-unknown-unknown/release/${crateName}.wasm`);
+            const destWasm = path.join(pkgDir, `${crateName}_bg.wasm`);
+            fs.copyFileSync(targetWasm, destWasm);
+            console.log(chalk.green("✔ Raw Wasm compilation successful."));
+        } catch (cargoErr) {
+            console.log(chalk.red("✖ Wasm compilation failed. Make sure Rust and wasm32-unknown-unknown target are installed."));
+            return;
+        }
     }
 
     console.log(chalk.gray("  Generating bindings..."));
@@ -95,7 +108,7 @@ async function buildNativeExtension(titanJson) {
 
     console.log(chalk.gray("  Compiling Rust native library..."));
     try {
-        execSync('cargo build --release', { cwd: nativeDir, stdio: 'inherit' });
+        execSync('cargo build --release', { cwd: nativeDir, stdio: 'ignore' });
     } catch (err) {
         console.log(chalk.red("✖ Native compilation failed."));
         return;

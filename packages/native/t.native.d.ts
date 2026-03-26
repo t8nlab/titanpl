@@ -236,6 +236,18 @@ export const db: typeof t.db;
 /**
  * WebSocket communication utilities.
  *
+ * @example
+ * ```js
+ * import { ws } from "@titanpl/native";
+ * 
+ * export default function chat(req) {
+ *   if (req.event === "open") {
+ *     ws.send(req.socketId, "Welcome!");
+ *     ws.broadcast("Someone joined.");
+ *   }
+ * }
+ * ```
+ *
  * Re-exported from the `t` global for module-style imports.
  * @see {@link TitanRuntimeUtils.ws} for full documentation.
  */
@@ -372,6 +384,23 @@ export const time: typeof t.time;
  * @see {@link TitanCore.URLModule} for full documentation.
  */
 export const url: typeof t.url;
+
+/**
+ * HTTP Response builder utilities.
+ *
+ * @example
+ * ```js
+ * import { response } from "@titanpl/native";
+ * 
+ * export function get(req) {
+ *   return response.json({ hello: "world" });
+ * }
+ * ```
+ *
+ * Re-exported from the `t` global for module-style imports.
+ * @see {@link TitanRuntimeUtils.response} for full documentation.
+ */
+export const response: typeof t.response;
 
 /**
  * Runtime validation utilities.
@@ -732,10 +761,12 @@ declare global {
          *
          * @example
          * ```js
+         * import { ws } from "@titanpl/native";
+         * 
          * export default function chat(req) {
          *   if (req.event === "open") {
-         *     t.ws.send(req.socketId, "Welcome!");
-         *     t.ws.broadcast("Someone joined.");
+         *     ws.send(req.socketId, "Welcome!");
+         *     ws.broadcast("Someone joined.");
          *   }
          * }
          * ```
@@ -1178,6 +1209,26 @@ declare global {
         url: TitanCore.URLModule;
 
         /**
+         * HTTP Response builder utilities.
+         *
+         * Provides helpers for crafting standardized HTTP responses, such as JSON,
+         * HTML, redirects, or raw text.
+         *
+         * @example
+         * ```js
+         * import { response } from "@titanpl/native";
+         * 
+         * export function get(req) {
+         *   if (!req.headers.authorization) {
+         *     return response.json({ error: "Unauthorized" }, 401);
+         *   }
+         *   return response.html("<h1>Welcome</h1>");
+         * }
+         * ```
+         *
+         * @see https://titanpl.vercel.app/docs/how-to-use/05-runtime-apis — Runtime APIs (t.response)
+         */
+        response: TitanCore.ResponseModule;
 
         /**
          * Runtime validation utilities.
@@ -1248,6 +1299,51 @@ declare global {
     namespace TitanCore {
         interface TitanResponse {
             readonly __titan_response: true;
+        }
+
+        /**
+         * Response builder interfaces.
+         */
+        interface ResponseModule {
+            /**
+             * Return a JSON response with an optional status code and headers.
+             * 
+             * @param data - The object or value to serialize to JSON.
+             * @param status - The HTTP status code (default: 200).
+             * @param headers - Optional custom headers.
+             * @returns A standard Titan response.
+             */
+            json(data: any, status?: number, headers?: Record<string, string>): TitanResponse;
+
+            /**
+             * Return an HTML response with an optional status code and headers.
+             * 
+             * @param html - The HTML string to return.
+             * @param status - The HTTP status code (default: 200).
+             * @param headers - Optional custom headers.
+             * @returns A standard Titan response.
+             */
+            html(html: string, status?: number, headers?: Record<string, string>): TitanResponse;
+            
+            /**
+             * Return a plain text response with an optional status code and headers.
+             * 
+             * @param text - The string to return.
+             * @param status - The HTTP status code (default: 200).
+             * @param headers - Optional custom headers.
+             * @returns A standard Titan response.
+             */
+            text(text: string, status?: number, headers?: Record<string, string>): TitanResponse;
+            
+            /**
+             * Issue an HTTP redirect to a specific URL.
+             * 
+             * @param url - The destination URL.
+             * @param status - The redirect status code (default: 302).
+             * @param headers - Optional custom headers.
+             * @returns A standard Titan response.
+             */
+            redirect(url: string, status?: number, headers?: Record<string, string>): TitanResponse;
         }
         /**
          * Asynchronous file system operations.
@@ -2200,7 +2296,7 @@ declare global {
  * - t.os
  * - t.time
  */
-    const process: {
+    var process: {
         /** Process ID */
         pid: number;
 

@@ -37,6 +37,21 @@ export interface WebSocketModule {
 }
 
 export const db: any;
+/**
+ * WebSocket communication utilities.
+ *
+ * @example
+ * ```js
+ * import { ws } from "@titanpl/native";
+ * 
+ * export default function chat(req) {
+ *   if (req.event === "open") {
+ *     ws.send(req.socketId, "Welcome!");
+ *     ws.broadcast("Someone joined.");
+ *   }
+ * }
+ * ```
+ */
 export const ws: WebSocketModule;
 export const path: any;
 export const jwt: any;
@@ -52,6 +67,18 @@ export const net: any;
 export const proc: any;
 export const time: any;
 export const url: any;
+/**
+ * HTTP Response builder utilities.
+ *
+ * @example
+ * ```js
+ * import { response } from "@titanpl/native";
+ * 
+ * export function get(req) {
+ *   return response.json({ hello: "world" });
+ * }
+ * ```
+ */
 export const response: any;
 export const valid: any;
 

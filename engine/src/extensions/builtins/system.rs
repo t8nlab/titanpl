@@ -250,6 +250,29 @@ pub fn parse_async_op(scope: &mut v8::HandleScope, op_val: v8::Local<v8::Value>)
             let path = v8_to_string(scope, path_obj);
             Some(TitanAsyncOp::FsRead { path })
         },
+        "native_call" => {
+            let ext_key = v8_str(scope, "extension");
+            let ext_val = data_obj.get(scope, ext_key.into())?;
+            let extension = v8_to_string(scope, ext_val);
+
+            let fn_key = v8_str(scope, "function");
+            let fn_val = data_obj.get(scope, fn_key.into())?;
+            let function = v8_to_string(scope, fn_val);
+
+            let params_key = v8_str(scope, "params");
+            let mut params = Vec::new();
+            if let Some(p_val) = data_obj.get(scope, params_key.into()) {
+                if p_val.is_array() {
+                    let arr = v8::Local::<v8::Array>::try_from(p_val).unwrap();
+                    for i in 0..arr.length() {
+                        if let Some(v) = arr.get_index(scope, i) {
+                            params.push(crate::extensions::v8_to_json(scope, v));
+                        }
+                    }
+                }
+            }
+            Some(TitanAsyncOp::NativeCall { extension, function, params })
+        },
         _ => None
     }
 }

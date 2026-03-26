@@ -1,13 +1,3 @@
-//! Titan HTTP Server (Performance Optimized)
-//!
-//! Key Features:
-//! 1. Fast-path integration: static actions bypass V8 entirely.
-//! 2. Pre-computed route responses: reply routes serve cached bytes.
-//! 3. Benchmark mode: `TITAN_BENCHMARK=1` disables per-request logging & timings.
-//! 4. Early fast-path check BEFORE body/header parsing.
-//! 5. Mimalloc global allocator for faster allocations.
-//! 6. Optimized response construction.
-
 use anyhow::Result;
 use axum::{
     Router,
@@ -348,6 +338,20 @@ async fn handler(State(state): State<AppState>, req: AxumRequest) -> impl IntoRe
             return (StatusCode::NOT_FOUND, "Not Found").into_response();
         }
     };
+
+    // Phase 2.5: Fast-path — bypass V8 for statically-detected actions
+    if let Some(static_resp) = state.fast_paths.get(&action_name) {
+        if log_enabled {
+            println!(
+                "{} {} {} {}",
+                blue("[Titan FastPath]"),
+                white(&format!("{} {}", method, path)),
+                green("→ static"),
+                gray(&format!("in {:.2?}", start.elapsed()))
+            );
+        }
+        return static_resp.to_axum_response();
+    }
 
     // Phase 3: V8 Execution (dispatch to worker pool)
 
