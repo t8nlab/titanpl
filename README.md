@@ -17,7 +17,7 @@
 
   <img src="https://img.shields.io/badge/Powered%20By%20Rust%20Axum-DEA584?style=for-the-badge&logo=rust&logoColor=black" />
 
-  <a href="https://discord.gg/mPDaTRtP">
+  <a href="https://discord.gg/Dm9cD8QGUa">
     <img src="https://img.shields.io/badge/Join-5865F2?style=for-the-badge&logo=discord&logoColor=white" />
   </a>
 
