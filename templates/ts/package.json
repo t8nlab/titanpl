@@ -6,21 +6,21 @@
     "template": "ts"
   },
   "dependencies": {
-    "@titanpl/cli": "7.0.1",
-    "@titanpl/route": "7.0.1",
-    "@titanpl/native": "7.0.1",
-    "@titanpl/core": "7.0.0",
+    "@titanpl/cli": "latest",
+    "@titanpl/route": "latest",
+    "@titanpl/native": "latest",
+    "@titanpl/core": "latest",
     "@titanpl/node": "latest",
-    "@titanpl/packet": "7.0.1",
+    "@titanpl/packet": "latest",
     "typescript": "^5.0.0"
   },
   "optionalDependencies": {
-    "@titanpl/engine-linux-arm64": "2.0.5",
-    "@titanpl/engine-linux-x64": "7.0.1",
-    "@titanpl/engine-win32-x64": "7.0.1"
+    "@titanpl/engine-linux-x64": "latest",
+    "@titanpl/engine-win32-x64": "latest"
   },
   "scripts": {
     "build": "titan build",
+    "release": "titan build -r",
     "dev": "titan dev",
     "start": "titan start",
     "lint": "eslint .",

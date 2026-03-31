@@ -67,15 +67,6 @@ export async function build(root = process.cwd()) {
     outDir: dist,
   });
 
-  const tanfigPath = path.join(root, "tanfig.json");
-  if (fs.existsSync(tanfigPath)) {
-    fs.copyFileSync(tanfigPath, path.join(dist, "tanfig.json"));
-  }
-  const titanExtPath = path.join(root, "titan.json");
-  if (fs.existsSync(titanExtPath)) {
-    fs.copyFileSync(titanExtPath, path.join(dist, "titan.json"));
-  }
-
   return dist;
 }
 
@@ -133,7 +124,7 @@ export async function release(root = process.cwd()) {
   copyDir(dist, path.join(buildDir, "dist"));
 
   // Step 6: Copy essential config files (mandatory for runtime)
-  const essentials = ["package.json", "tanfig.json", "titan.json"];
+  const essentials = ["package.json", "tanfig.json", "titan.json", "t.env", ".env"];
   for (const f of essentials) {
     const src = path.join(root, f);
     if (fs.existsSync(src)) {

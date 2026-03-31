@@ -208,8 +208,9 @@ export async function dev(options) {
     // Watch for changes inside app/
     const appDir = path.join(root, "app");
     const envFile = path.join(root, ".env");
+    const tEnvFile = path.join(root, "t.env");
 
-    const watcher = chokidar.watch([appDir, envFile], {
+    const watcher = chokidar.watch([appDir, envFile, tEnvFile], {
         ignoreInitial: true,
         awaitWriteFinish: { stabilityThreshold: 200, pollInterval: 50 }
     });

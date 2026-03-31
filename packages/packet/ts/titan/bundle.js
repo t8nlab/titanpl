@@ -34,6 +34,29 @@ const NODE_BUILTIN_MAP = {
     "node:util": "@titanpl/node/util",
 };
 
+const createTitanRootResolverPlugin = (root) => {
+    return {
+        name: "titan-root-resolver",
+        setup(build) {
+            // Handle paths starting with ./ or ../ manually to check root first if needed
+            build.onResolve({ filter: /^\.\.?\// }, args => {
+                const potentialPath = path.join(root, args.path.replace(/^\.\//, ''));
+                if (fs.existsSync(potentialPath)) {
+                    return { path: potentialPath };
+                }
+                // Fallback to default
+                return null;
+            });
+
+            // Special handling for paths that looks like project folders
+            const projectFolders = ['app', 'config', 'db', 'public', 'static', 'views', 'auth'];
+            build.onResolve({ filter: new RegExp(`^(${projectFolders.join('|')})(\\/|$)`) }, args => {
+                return { path: path.join(root, args.path) };
+            });
+        }
+    };
+};
+
 const createTitanNodeCompatPlugin = (root) => {
     const rootRequire = createRequire(path.join(root, 'package.json'));
 
@@ -143,6 +166,7 @@ export async function bundleFile(options) {
     if (!fs.existsSync(outDir)) fs.mkdirSync(outDir, { recursive: true });
 
     try {
+        const root = options.root || process.cwd();
         const result = await esbuild.build({
             entryPoints: [entryPoint],
             bundle: true,
@@ -152,7 +176,20 @@ export async function bundleFile(options) {
             platform: 'node',
             target,
             logLevel: 'silent',
-            plugins: [createTitanNodeCompatPlugin(options.root || process.cwd())],
+            absWorkingDir: root,
+            plugins: [
+                createTitanRootResolverPlugin(root),
+                createTitanNodeCompatPlugin(root)
+            ],
+            alias: {
+                "app": path.join(root, "app"),
+                "config": path.join(root, "config"),
+                "db": path.join(root, "db"),
+                "public": path.join(root, "public"),
+                "static": path.join(root, "static"),
+                "views": path.join(root, "views"),
+                "auth": path.join(root, "auth"),
+            },
             banner: { js: "var Titan = t;" },
             footer: options.footer || {}
         });

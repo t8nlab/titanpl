@@ -209,9 +209,10 @@ export async function dev(options) {
     // Watch for changes inside app/
     const appDir = path.join(root, "app");
     const envFile = path.join(root, ".env");
+    const tEnvFile = path.join(root, "t.env");
     const tsConfig = path.join(root, "tsconfig.json");
 
-    const watcher = chokidar.watch([appDir, envFile, tsConfig], {
+    const watcher = chokidar.watch([appDir, envFile, tEnvFile, tsConfig], {
         ignoreInitial: true,
         awaitWriteFinish: { stabilityThreshold: 200, pollInterval: 50 }
     });

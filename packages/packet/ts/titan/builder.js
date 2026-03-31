@@ -67,6 +67,15 @@ export async function buildMetadata(root, dist) {
             JSON.stringify(actionMap, null, 2)
         );
 
+        // Sync essential files to dist (needed for runtime path resolution & env)
+        const essentials = ["package.json", "tanfig.json", "titan.json", "t.env", ".env"];
+        for (const f of essentials) {
+            const src = path.join(root, f);
+            if (fs.existsSync(src)) {
+                fs.copyFileSync(src, path.join(dist, f));
+            }
+        }
+
     } catch (err) {
         console.error("\x1b[31m❌ Failed to parse routes from application logic\x1b[0m", err);
         process.exit(1);

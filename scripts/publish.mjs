@@ -30,14 +30,6 @@ const getPackageJsons = (baseDir) => {
         });
     }
 
-    // Check templates/
-    const templatesDir = path.join(absoluteBase, 'templates');
-    if (fs.existsSync(templatesDir)) {
-        fs.readdirSync(templatesDir).forEach(p => {
-            const pkgPath = path.join(templatesDir, p, 'package.json');
-            if (fs.existsSync(pkgPath)) results.push(pkgPath);
-        });
-    }
 
     // Check titanpl-sdk
     const sdkDir = path.join(absoluteBase, 'titanpl-sdk');
@@ -104,6 +96,7 @@ console.log("Publishing packages...");
 
 for (const { dir, content } of packageJsons) {
     if (dir.includes('templates')) continue; // Don't publish templates
+    if (content.name !== '@titanpl/cli' && content.name !== '@titanpl/packet') continue; // ONLY publish CLI and Packet
 
     // Special case: Copy engine binary if it's an engine package
     if (content.name.startsWith('@titanpl/engine-')) {
