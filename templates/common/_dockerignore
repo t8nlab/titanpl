@@ -10,6 +10,8 @@ yarn.lock
 dist/
 .titan/
 .ext/
+build/
+node_modules/
 
 deploy/
 
