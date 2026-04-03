@@ -1,6 +1,6 @@
 {
   "name": "@titanpl/engine-darwin-arm64",
-  "version": "7.0.3",
+  "version": "7.0.4",
   "os": [
     "darwin"
   ],
