@@ -9,7 +9,7 @@
     "@titanpl/cli": "latest",
     "@titanpl/route": "latest",
     "@titanpl/native": "latest",
-    "@titanpl/core": "latest",
+    "@titanpl/core": "3.0.7",
     "@titanpl/node": "latest",
     "@titanpl/packet": "latest",
     "typescript": "^5.0.0"
