@@ -1,5 +1,55 @@
 # Changelog - Titan Planet ⏣
 
+## [7.0.6] - 2026-04-08
+
+### 🚀 Dynamic Routing & SPA Support
+
+This release introduces rest parameter routing to TitanPL, enabling variable-depth route matching and seamless frontend integration.
+
+### ✨ Highlights
+
+#### **Rest Parameter Routing (`:param*`)**
+
+TitanPL now supports variable-length dynamic routes for handling nested paths.
+
+* **New Routing Syntax**:
+
+  ```js
+  t.get("/:path*").action("static");
+  ```
+* **Flexible Matching**: Supports routes like `/assets/app.js`, `/assets/css/style.css`, and any deeply nested path.
+* **Single Action Handling**: Serve multiple files or fallback routes using `req.params.path`.
+
+#### **Improved SPA Routing Experience**
+
+Simplifies serving modern frontend apps like React + Vite.
+
+* **Clean Setup**:
+
+  ```js
+  t.get("/login").action("login");
+  t.get("/:path*").action("static");
+  ```
+* **Automatic Fallback**: Unmatched routes are handled by a single action, enabling client-side routing without manual definitions.
+* **Static Asset Support**: Works out-of-the-box with Vite build outputs (`/assets/*`).
+
+#### **Non-Breaking Routing Behavior**
+
+* **Exact Routes Priority**: Static routes like `/login` always resolve before dynamic ones.
+* **Param Routes Unchanged**: Existing routes (`/user/:id`) behave exactly as before.
+* **Rest Routes as Fallback**: `:path*` only matches when no other route is found.
+
+#### **Simplified Action Naming & Auto-Export Discovery**
+
+TitanPL now decouples the file name from the internal function name, streamlining route management.
+
+* **File Name as Action Name**: Reference actions using just the file name in `app/app.ts` or `app/app.js`.
+* **Automatic Export Discovery**: TitanPL automatically detects `export default` or any named `export` within your action file to use as the route handler.
+* **Next.js Style Experience**: Enjoy a familiar developer experience where the file structure defines the action identity, regardless of the internal naming convention.
+
+---
+
+
 ## [7.0.1] - 2026-03-26
 
 ### 🚀 Drift Ergonomics & TypeScript Stability

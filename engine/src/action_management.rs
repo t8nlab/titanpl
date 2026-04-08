@@ -83,15 +83,41 @@ pub fn match_dynamic_route(
 
         let pattern_segments: Vec<&str> =
             route.pattern.trim_matches('/').split('/').collect();
+        
+        let has_rest = pattern_segments
+            .last()
+            .map_or(false, |s| s.starts_with(':') && s.ends_with('*'));
 
-        if pattern_segments.len() != path_segments.len() {
+        if !has_rest && pattern_segments.len() != path_segments.len() {
+            continue;
+        }
+
+        if has_rest && path_segments.len() < pattern_segments.len() - 1 {
             continue;
         }
 
         let mut params = HashMap::new();
         let mut matched = true;
 
-        for (pat, val) in pattern_segments.iter().zip(path_segments.iter()) {
+        for (i, pat) in pattern_segments.iter().enumerate() {
+
+            if pat.starts_with(':') && pat.ends_with('*') {
+                let name = pat.trim_start_matches(':').trim_end_matches('*');
+
+                let rest = path_segments[i..].join("/");
+                params.insert(name.to_string(), rest);
+
+                break;
+            }
+
+            let val = match path_segments.get(i) {
+                Some(v) => *v,
+                None => {
+                    matched = false;
+                    break;
+                }
+            };
+
             if pat.starts_with(':') {
                 let inner = &pat[1..];
 
@@ -111,8 +137,8 @@ pub fn match_dynamic_route(
                     break;
                 }
 
-                params.insert(name.to_string(), (*val).to_string());
-            } else if pat != val {
+                params.insert(name.to_string(), val.to_string());
+            } else if pat != &val {
                 matched = false;
                 break;
             }

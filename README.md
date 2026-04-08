@@ -171,6 +171,23 @@ export const hello = defineAction((req) => {
 });
 ```
 
+### 🎈 Flexible Action Discovery
+Starting from **v7.0.6**, TitanPL supports a more flexible action naming convention. You no longer need to match the exported function name with the file name.
+
+* **File-based Routing**: If you have `app/actions/get-user.ts`, you can simply use `.action("get-user")` in your routes.
+* **Auto-discovery**: TitanPL will automatically find the `export default` or the first named `export` in the file.
+* **Next.js Familiarity**: Works just like Next.js API routes, keeping your `app/app.ts` clean and focused on routing.
+
+```typescript
+// app/actions/auth.ts
+export default defineAction((req) => {
+    return { status: "authenticated" };
+});
+
+// app/app.ts
+t.post("/login").action("auth"); // Matches auth.ts default export
+```
+
 ### 🔴 Rust Actions (Beta)
 Perfect for heavy computation, encryption, image processing, or low-level system access.
 > **Note:** The Native Rust Action API is currently in **Beta**.
