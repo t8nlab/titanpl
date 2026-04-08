@@ -1,6 +1,6 @@
 # Changelog - Titan Planet ⏣
 
-## [7.0.6] - 2026-04-08
+## [7.0.2] - 2026-04-08
 
 ### 🚀 Dynamic Routing & SPA Support
 
