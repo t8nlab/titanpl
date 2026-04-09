@@ -145,11 +145,17 @@ pub async fn run_native_host(lib_path: &str) {
                     }
                 };
 
-                unsafe extern "system" {
-                    fn IsBadReadPtr(lp: *const std::os::raw::c_void, ucb: usize) -> i32;
-                }
+                #[cfg(windows)]
+                let is_bad = unsafe {
+                    extern "system" {
+                        fn IsBadReadPtr(lp: *const std::os::raw::c_void, ucb: usize) -> i32;
+                    }
+                    IsBadReadPtr(c_res as *const _, 1) != 0
+                };
+                #[cfg(not(windows))]
+                let is_bad = false;
 
-                if c_res.is_null() || unsafe { IsBadReadPtr(c_res as *const _, 1) } != 0 {
+                if c_res.is_null() || is_bad {
                     json!({"error": "Native returned NULL or void pointer"})
                 } else {
                     let s = std::ffi::CStr::from_ptr(c_res).to_string_lossy();
