@@ -16,14 +16,25 @@ pub fn native_db_connect(scope: &mut v8::HandleScope, args: v8::FunctionCallback
     }
 
     let mut max_size = 16;
+    let mut min_size = 0;
+    let mut use_ssl = false;
 
     if args.length() > 1 && args.get(1).is_object() {
         let opts = args.get(1).to_object(scope).unwrap();
+        
         let max_key = v8_str(scope, "max");
         if let Some(v) = opts.get(scope, max_key.into()) {
-            if let Some(n) = v.number_value(scope) {
-                max_size = n as usize;
-            }
+            if let Some(n) = v.number_value(scope) { max_size = n as usize; }
+        }
+
+        let min_key = v8_str(scope, "min");
+        if let Some(v) = opts.get(scope, min_key.into()) {
+            if let Some(n) = v.number_value(scope) { min_size = n as usize; }
+        }
+
+        let ssl_key = v8_str(scope, "ssl");
+        if let Some(v) = opts.get(scope, ssl_key.into()) {
+            use_ssl = v.is_true();
         }
     }
 
@@ -31,6 +42,7 @@ pub fn native_db_connect(scope: &mut v8::HandleScope, args: v8::FunctionCallback
         let cfg: Config = match conn_string.parse() {
             Ok(c) => c,
             Err(e) => {
+                println!("{} {} parse error: {}", crate::utils::blue("[Titan]"), crate::utils::red("DB:"), e);
                 let msg = format!("t.db.connect(): Invalid connection string: {}", e);
                 let message = v8::String::new(scope, &msg).unwrap_or_else(|| v8::String::new(scope, "Error").unwrap());
                 let exception = v8::Exception::error(scope, message);
@@ -38,17 +50,25 @@ pub fn native_db_connect(scope: &mut v8::HandleScope, args: v8::FunctionCallback
                 return;
             }
         };
-        let mgr = Manager::new(cfg, NoTls);
-    
-        let pool = match Pool::builder(mgr)
-            .max_size(max_size)
-            .build() {
-                Ok(p) => p,
-                Err(e) => {
-                    throw(scope, &format!("t.db.connect(): Failed to build connection pool: {}", e));
-                    return;
-                }
-            };
+
+        let pool = if use_ssl {
+            let connector = native_tls::TlsConnector::builder()
+                .danger_accept_invalid_certs(true)
+                .build()
+                .unwrap();
+            let connector = postgres_native_tls::MakeTlsConnector::new(connector);
+            let mgr = Manager::new(cfg, connector);
+            Pool::builder(mgr)
+                .max_size(max_size)
+                .build()
+                .unwrap()
+        } else {
+            let mgr = Manager::new(cfg, NoTls);
+            Pool::builder(mgr)
+                .max_size(max_size)
+                .build()
+                .unwrap()
+        };
     
         DB_POOL.set(pool).ok();
     }
@@ -75,7 +95,7 @@ pub fn native_db_query(
         let arr = v8::Local::<v8::Array>::try_from(args.get(1)).unwrap();
         for i in 0..arr.length() {
             if let Some(v) = arr.get_index(scope, i) {
-                params.push(v8_to_string(scope, v));
+                params.push(v);
             }
         }
     }
@@ -106,8 +126,7 @@ pub fn native_db_query(
     let params_arr = v8::Array::new(scope, params.len() as i32);
 
     for (i, p) in params.iter().enumerate() {
-        let param_val = v8_str(scope, p);
-        params_arr.set_index(scope, i as u32, param_val.into());
+        params_arr.set_index(scope, i as u32, (*p).into());
     }
 
     let params_key = v8_str(scope, "params");

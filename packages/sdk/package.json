@@ -1,6 +1,6 @@
 {
   "name": "@titanpl/sdk",
-  "version": "7.0.5",
+  "version": "7.0.6",
   "description": "The official SDK for Titan Planet extensions and testing.",
   "type": "module",
   "main": "index.js",

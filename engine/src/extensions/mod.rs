@@ -65,7 +65,9 @@ pub enum TitanAsyncOp {
     DbQuery {
         conn: String,
         query: String,
-        params: Vec<String>,
+        params: Vec<serde_json::Value>,
+        pool_timeout: Option<u64>,
+        query_timeout: Option<u64>,
     },
     FsRead {
         path: String,
@@ -251,14 +253,14 @@ pub fn init_runtime_worker(
                             .message()
                             .map(|m| m.get(try_catch).to_rust_string_lossy(try_catch))
                             .unwrap_or("Unknown run error".to_string());
-                        println!("[V8] Failed to run action '{}': {}", name, msg);
+                        println!("[Gravity] Failed to run action '{}': {}", name, msg);
                     }
                 } else if id == 0 {
                     let msg = try_catch
                         .message()
                         .map(|m| m.get(try_catch).to_rust_string_lossy(try_catch))
                         .unwrap_or("Unknown compile error".to_string());
-                    println!("[V8] Failed to compile action '{}': {}", name, msg);
+                    println!("[Gravity] Failed to compile action '{}': {}", name, msg);
                 }
             }
         }

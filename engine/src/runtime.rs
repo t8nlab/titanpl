@@ -1,10 +1,4 @@
-//! Worker Pool Management (Performance Optimized)
-//!
-//! Features:
-//! 1. Work-stealing fallback strategy.
-//! 2. Bounded channel capacity for pipeline handling.
-//! 3. Batch-ready architecture for HTTP pipelining.
-//! 4. Zero-copy / deferred cloning where possible.
+// Worker Pool Management
 
 use bytes::Bytes;
 use crossbeam::channel::{bounded, Sender, TrySendError};

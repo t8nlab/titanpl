@@ -36,7 +36,45 @@ export interface WebSocketModule {
     broadcast(message: string): void;
 }
 
-export const db: any;
+export interface QueryOptions {
+    /** Timeout in milliseconds for the query execution. Defaults to 10000 (10s). */
+    timeout?: number;
+}
+
+export interface ConnectionOptions {
+    /** Maximum number of connections in the pool. Defaults to 16. */
+    max?: number;
+    /** Timeout in milliseconds for acquiring a connection from the pool. Defaults to 5000 (5s). */
+    pool_timeout?: number;
+}
+
+export interface DbConnection {
+    /**
+     * Executes a SQL query.
+     * 
+     * @param sql - The SQL query string (e.g., "SELECT * FROM users WHERE id = $1").
+     * @param params - Array of positional parameters to bind to the query.
+     * @param options - Optional settings like custom timeout.
+     * 
+     * @example
+     * ```js
+     * const users = drift(conn.query("SELECT * FROM users LIMIT 10"));
+     * ```
+     */
+    query(sql: string, params?: any[], options?: QueryOptions): any;
+}
+
+export interface DatabaseModule {
+    /**
+     * Connects to a PostgreSQL database and initializes the connection pool.
+     * 
+     * @param url - The PostgreSQL connection string.
+     * @param options - Pool and timeout configurations.
+     */
+    connect(url: string, options?: ConnectionOptions): DbConnection;
+}
+
+export const db: DatabaseModule;
 /**
  * WebSocket communication utilities.
  *
@@ -91,3 +129,40 @@ export function serialise(value: any): Uint8Array;
 export function deserialize(buffer: Uint8Array): any;
 /** Deserializes a Uint8Array back into its original JavaScript value/object. Alias for deserialize. */
 export function deserialise(buffer: Uint8Array): any;
+
+export interface TitanTypes {
+    STRING(val: any): any;
+    NUMBER(val: any): any;
+    BOOLEAN(val: any): any;
+    UUID(val: string): any;
+    TIMESTAMP(val: string): any;
+    TIMESTAMPTZ(val: string): any;
+    DATE(val: string): any;
+    JSON(val: any): any;
+    VARCHAR(val: string): any;
+    CHAR(val: string): any;
+    TEXT(val: string): any;
+    INT(val: number): any;
+    BIGINT(val: string | number): any;
+    FLOAT(val: number): any;
+}
+
+/**
+ * Type Casting API for deterministic database operations.
+ * 
+ * @example
+ * ```js
+ * import { types, db, drift } from "@titanpl/native";
+ * 
+ * export function save(req) {
+ *   const conn = drift(db.connect(url));
+ *   drift(conn.query("INSERT INTO users (id) VALUES ($1)", [types.UUID(req.body.id)]));
+ * }
+ * ```
+ */
+export const types: TitanTypes;
+
+/**
+ * Environment variables loaded from .env file.
+ */
+export const env: Record<string, string>;

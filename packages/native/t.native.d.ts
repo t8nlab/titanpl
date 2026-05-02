@@ -410,6 +410,20 @@ export const response: typeof t.response;
  *
  */
 export const valid: any;
+/**
+ * Type Casting API for deterministic database operations.
+ * 
+ * Re-exported from the `t` global for module-style imports.
+ * @see {@link TitanRuntimeUtils.types} for full documentation and examples.
+ */
+export const types: typeof t.types;
+/**
+ * Environment variables loaded from the .env file.
+ * 
+ * Re-exported from the `t` global for module-style imports.
+ * @see {@link TitanRuntimeUtils.env} for full documentation.
+ */
+export const env: typeof t.env;
 
 
 // ---------------------------------------------------------------------------
@@ -974,61 +988,78 @@ declare global {
          */
         db: {
             /**
-             * Establish a database connection.
+             * # Database Connection
+             * 
+             * Establish a database connection to a PostgreSQL database.
              *
              * @param url - A database connection string.
-             *
-             * Supported formats:
-             * - PostgreSQL: `"postgres://user:pass@host:5432/dbname"`
-             * - MySQL: `"mysql://user:pass@host:3306/dbname"`
-             * - SQLite: `"sqlite://./data.db"`
-             *
-             * @returns A promise resolving to a {@link DbConnection} instance.
-             *
-             * @example
-             * ```js
-             * const conn = drift(
-             *   t.db.connect("postgres://admin:secret@localhost:5432/mydb")
-             * );
-             * ```
+             * @param options - Connection pool settings.
+             * @returns A connection object with a `.query()` method.
              */
-            connect(url: string): Promise<DbConnection>;
+            connect(url: string, options?: { max?: number, pool_timeout?: number }): {
+                query(sql: string, params?: any[], options?: { timeout?: number }): Promise<any[]>;
+            };
 
             /**
-             * Execute a SQL query using the default database connection.
-             *
-             * Uses the configured `DATABASE_URL` internally.
-             * Ideal for simple and one-off queries.
-             *
-             * @example
-             * ```js
-             * const users = drift(
-             *   t.db.query("SELECT * FROM users")
-             * );
-             * ```
-             *
-             * @example
-             * ```js
-             * const user = drift(
-             *   t.db.query(
-             *     "SELECT * FROM users WHERE id = $1",
-             *     [42]
-             *   )
-             * );
-             * ```
-             *
-             * @example
-             * ```js
-             * const sql = drift(t.fs.readFile("./db/login.sql"));
-             * const rows = drift(t.db.query(sql, [email, hash]));
-             * ```
+             * # Global Query
+             * 
+             * Execute a SQL query using the primary database connection.
              *
              * @param sql - SQL query string.
-             * @param params - Optional positional parameters.
+             * @param params - Optional positional parameters ($1, $2, etc).
+             * @param options - Optional query settings.
              * @returns A promise resolving to query result rows.
              */
-            query(sql: string, params?: any[]): Promise<any[]>;
+            query(sql: string, params?: any[], options?: { timeout?: number }): Promise<any[]>;
         };
+
+        /**
+         * # Type Casting API — Explicit SQL Type Marking
+         * 
+         * `t.types` provides a set of helper functions to explicitly mark your
+         * JavaScript values as specific database types.
+         * 
+         * ## Why use this?
+         * 
+         * While Titan's database driver attempts to infer types automatically, 
+         * explicit casting is required for certain database types (like `UUID` or 
+         * `TIMESTAMP`) when they are passed as parameters in prepared statements.
+         * 
+         * @example
+         * ```js
+         * const { UUID, TIMESTAMP, JSON } = t.types;
+         * 
+         * export function registerUser(req) {
+         *   const conn = drift(t.db.connect(url));
+         *   drift(conn.query(
+         *     "INSERT INTO users (id, created_at, settings) VALUES ($1, $2, $3)",
+         *     [
+         *       UUID(req.body.id),              // Ensure it's treated as UUID OID
+         *       TIMESTAMP(new Date()),          // Ensure it's treated as TIMESTAMP OID
+         *       JSON({ theme: "dark" })         // Ensure it's treated as JSONB OID
+         *     ]
+         *   ));
+         * }
+         * ```
+         */
+        types: TitanCore.TitanTypes;
+        
+        /**
+         * # Environment Variables
+         * 
+         * `t.env` provides access to environment variables loaded from your 
+         * project's `.env` file at startup.
+         * 
+         * @example
+         * ```js
+         * export function getDatabase(req) {
+         *   const url = t.env.DATABASE_URL;
+         *   const conn = drift(t.db.connect(url));
+         *   return { connected: true };
+         * }
+         * ```
+         */
+        env: Record<string, string>;
 
 
 
@@ -1297,6 +1328,39 @@ declare global {
     // -----------------------------------------------------------------------
 
     namespace TitanCore {
+        /**
+         * Interface for explicit type marking and conversion.
+         */
+        export interface TitanTypes {
+            /** Casts value to a standard string. */
+            STRING(val: any): any;
+            /** Casts value to a number. */
+            NUMBER(val: any): any;
+            /** Casts value to a boolean. */
+            BOOLEAN(val: any): any;
+            /** Marks value as a database UUID. */
+            UUID(val: string): any;
+            /** Marks value as a database TIMESTAMP. */
+            TIMESTAMP(val: string | Date): any;
+            /** Marks value as a database TIMESTAMP WITH TIME ZONE. */
+            TIMESTAMPTZ(val: string | Date): any;
+            /** Marks value as a database DATE. */
+            DATE(val: string | Date): any;
+            /** Marks value as a database JSON/JSONB object. */
+            JSON(val: any): any;
+            /** Marks value as a database VARCHAR string. */
+            VARCHAR(val: string): any;
+            /** Marks value as a database CHAR string. */
+            CHAR(val: string): any;
+            /** Marks value as a database TEXT string. */
+            TEXT(val: string): any;
+            /** Casts value to a 32-bit integer. */
+            INT(val: number): any;
+            /** Casts value to a 64-bit integer (BIGINT). Supports strings for precision. */
+            BIGINT(val: string | number): any;
+            /** Casts value to a floating point number. */
+            FLOAT(val: number): any;
+        }
         interface TitanResponse {
             readonly __titan_response: true;
         }

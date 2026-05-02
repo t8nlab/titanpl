@@ -1,6 +1,6 @@
 {
   "name": "@titanpl/cli",
-  "version": "7.0.5",
+  "version": "7.0.6",
   "description": "The unified CLI for Titan Planet. Use it to create, manage, build, and deploy high-performance backend projects.",
   "keywords": [
     "titanpl",
@@ -29,11 +29,11 @@
     "tit": "./index.js"
   },
   "optionalDependencies": {
-    "@titanpl/engine-win32-x64": "7.0.5",
-    "@titanpl/engine-linux-x64": "7.0.5"
+    "@titanpl/engine-win32-x64": "7.0.6",
+    "@titanpl/engine-linux-x64": "7.0.6"
   },
   "dependencies": {
-    "@titanpl/packet": "7.0.5",
+    "@titanpl/packet": "7.0.6",
     "prompts": "^2.4.2",
     "commander": "^11.0.0",
     "chalk": "^4.1.2"

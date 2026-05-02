@@ -5,6 +5,121 @@ use serde_json::Value;
 use crate::extensions::{v8_str, v8_to_string, throw, TitanRuntime, TitanAsyncOp};
 use crate::utils::{blue, gray, red, parse_expires_in};
 use super::db::DB_POOL;
+use tokio_postgres::types::{Type, ToSql, IsNull};
+use bytes::BytesMut;
+use std::error::Error;
+
+#[derive(Debug)]
+struct PostgresParam(serde_json::Value);
+
+impl ToSql for PostgresParam {
+    fn to_sql(&self, ty: &Type, out: &mut BytesMut) -> Result<IsNull, Box<dyn Error + Sync + Send>> {
+        // Handle explicit type markers from t.types
+        if let serde_json::Value::Object(map) = &self.0 {
+            if let Some(serde_json::Value::String(t_type)) = map.get("_titanType") {
+                let value = map.get("value").unwrap_or(&serde_json::Value::Null);
+
+                return match t_type.as_str() {
+                    "uuid" => {
+                        if let Some(s) = value.as_str() {
+                            if let Ok(u) = uuid::Uuid::parse_str(s) {
+                                return u.to_sql(ty, out);
+                            }
+                        }
+                        Ok(IsNull::Yes)
+                    }
+                    "timestamp" | "timestamptz" => {
+                        if let Some(s) = value.as_str() {
+                            if let Ok(dt) = chrono::DateTime::parse_from_rfc3339(s) {
+                                return dt.with_timezone(&chrono::Utc).to_sql(ty, out);
+                            }
+                            if let Ok(dt) = chrono::NaiveDateTime::parse_from_str(s, "%Y-%m-%d %H:%M:%S") {
+                                return dt.to_sql(ty, out);
+                            }
+                            if let Ok(d) = chrono::NaiveDate::parse_from_str(s, "%Y-%m-%d") {
+                                return d.and_hms_opt(0, 0, 0).unwrap().to_sql(ty, out);
+                            }
+                        }
+                        Ok(IsNull::Yes)
+                    }
+                    "int" => {
+                        let val = value.as_i64().unwrap_or(0);
+                        if ty == &Type::INT8 {
+                            val.to_sql(ty, out)
+                        } else {
+                            (val as i32).to_sql(ty, out)
+                        }
+                    }
+                    "bigint" => {
+                        if let Some(s) = value.as_str() {
+                            if let Ok(i) = s.parse::<i64>() {
+                                return i.to_sql(ty, out);
+                            }
+                        }
+                        value.as_i64().unwrap_or(0).to_sql(ty, out)
+                    }
+                    "float" => value.as_f64().unwrap_or(0.0).to_sql(ty, out),
+                    "boolean" => value.as_bool().unwrap_or(false).to_sql(ty, out),
+                    "json" => value.to_sql(ty, out),
+                    _ => {
+                        if let Some(s) = value.as_str() {
+                            s.to_sql(ty, out)
+                        } else {
+                            value.to_sql(ty, out)
+                        }
+                    }
+                };
+            }
+        }
+
+        // Default heuristic-based conversion
+        match &self.0 {
+            serde_json::Value::Null => Ok(IsNull::Yes),
+            serde_json::Value::Bool(b) => b.to_sql(ty, out),
+            serde_json::Value::Number(n) => {
+                if ty == &Type::INT8 || ty == &Type::NUMERIC {
+                    n.as_i64().unwrap_or(0).to_sql(ty, out)
+                } else if ty == &Type::INT4 {
+                    (n.as_i64().unwrap_or(0) as i32).to_sql(ty, out)
+                } else if ty == &Type::FLOAT8 {
+                    n.as_f64().unwrap_or(0.0).to_sql(ty, out)
+                } else if ty == &Type::FLOAT4 {
+                    (n.as_f64().unwrap_or(0.0) as f32).to_sql(ty, out)
+                } else {
+                    n.as_f64().unwrap_or(0.0).to_sql(ty, out)
+                }
+            }
+            serde_json::Value::String(s) => {
+                if ty == &Type::UUID {
+                    if let Ok(u) = uuid::Uuid::parse_str(s) {
+                        return u.to_sql(ty, out);
+                    }
+                }
+                if ty == &Type::TIMESTAMP || ty == &Type::TIMESTAMPTZ {
+                    if let Ok(dt) = chrono::DateTime::parse_from_rfc3339(s) {
+                        return dt.with_timezone(&chrono::Utc).to_sql(ty, out);
+                    }
+                    if let Ok(dt) = chrono::NaiveDateTime::parse_from_str(s, "%Y-%m-%d %H:%M:%S") {
+                        return dt.to_sql(ty, out);
+                    }
+                    if let Ok(d) = chrono::NaiveDate::parse_from_str(s, "%Y-%m-%d") {
+                        return d.and_hms_opt(0, 0, 0).unwrap().to_sql(ty, out);
+                    }
+                }
+                s.to_sql(ty, out)
+            }
+            _ => self.0.to_sql(ty, out),
+        }
+    }
+
+    fn accepts(_ty: &Type) -> bool {
+        true
+    }
+
+    fn to_sql_checked(&self, ty: &Type, out: &mut BytesMut) -> Result<IsNull, Box<dyn Error + Sync + Send>> {
+        self.to_sql(ty, out)
+    }
+}
 
 pub const TITAN_CORE_JS: &str = include_str!("../titan_core.js");
 
@@ -235,13 +350,41 @@ pub fn parse_async_op(scope: &mut v8::HandleScope, op_val: v8::Local<v8::Value>)
                     let arr = v8::Local::<v8::Array>::try_from(p_val).unwrap();
                     for i in 0..arr.length() {
                         if let Some(v) = arr.get_index(scope, i) {
-                            params.push(v8_to_string(scope, v));
+                            params.push(crate::extensions::v8_to_json(scope, v));
                         }
                     }
                 }
             }
 
-            Some(TitanAsyncOp::DbQuery { conn, query, params })
+            let mut pool_timeout = None;
+            let mut query_timeout = None;
+
+            let opts_key = v8_str(scope, "options");
+            if let Some(opts_val) = data_obj.get(scope, opts_key.into()) {
+                if opts_val.is_object() {
+                    let opts_obj = opts_val.to_object(scope).unwrap();
+                    let pt_key = v8_str(scope, "pool_timeout");
+                    if let Some(v) = opts_obj.get(scope, pt_key.into()) {
+                        if v.is_number() {
+                            if let Some(n) = v.number_value(scope) { pool_timeout = Some(n as u64); }
+                        }
+                    }
+                    let qt_key = v8_str(scope, "timeout");
+                    if let Some(v) = opts_obj.get(scope, qt_key.into()) {
+                        if v.is_number() {
+                            if let Some(n) = v.number_value(scope) { query_timeout = Some(n as u64); }
+                        }
+                    }
+                }
+            }
+
+            Some(TitanAsyncOp::DbQuery { 
+                conn, 
+                query, 
+                params,
+                pool_timeout,
+                query_timeout
+            })
         }
 
         "fs_read" => {
@@ -351,12 +494,11 @@ pub fn native_drift_call(scope: &mut v8::HandleScope, mut args: v8::FunctionCall
         op: async_op,
         drift_id,
         request_id: req_id,
-        op_type,
+        op_type: op_type.clone(),
         respond_tx: tx,
     };
     
-    if let Err(e) = runtime.global_async_tx.try_send(req) {
-         println!("[Titan] Drift Call Failed to queue: {}", e);
+    if let Err(_) = runtime.global_async_tx.try_send(req) {
          retval.set(v8::null(scope).into());
          return;
     }
@@ -522,8 +664,13 @@ pub fn run_async_operation(
             // =========================
             // DB QUERY
             // =========================
-            TitanAsyncOp::DbQuery { conn: _, query, params } => {
-
+            TitanAsyncOp::DbQuery { 
+                conn: _, 
+                query, 
+                params,
+                pool_timeout,
+                query_timeout
+            } => {
                 let pool = match DB_POOL.get() {
                     Some(p) => p,
                     None => {
@@ -532,10 +679,15 @@ pub fn run_async_operation(
                         });
                     }
                 };
+                let p_timeout = pool_timeout.unwrap_or(5000);
+                let q_timeout = query_timeout.unwrap_or(10000);
 
-                match pool.get().await {
-                    Ok(client) => {
+                if std::env::var("TITAN_DEV").unwrap_or_default() == "1" {
+                    println!("{} {} Operation started (Pool: {}ms, Query: {}ms)", crate::utils::blue("[Titan]"), crate::utils::yellow("DB:"), p_timeout, q_timeout);
+                }
 
+                match tokio::time::timeout(std::time::Duration::from_millis(p_timeout), pool.get()).await {
+                    Ok(Ok(client)) => {
                         let stmt = match client.prepare(&query).await {
                             Ok(s) => s,
                             Err(e) => {
@@ -545,21 +697,22 @@ pub fn run_async_operation(
                             }
                         };
 
+                        let param_wrappers: Vec<PostgresParam> =
+                            params.into_iter().map(PostgresParam).collect();
+
                         let param_refs: Vec<&(dyn tokio_postgres::types::ToSql + Sync)> =
-                            params.iter()
+                            param_wrappers.iter()
                                 .map(|p| p as &(dyn tokio_postgres::types::ToSql + Sync))
                                 .collect();
 
-                        match client.query(&stmt, &param_refs).await {
-                            Ok(rows) => {
-
+                        match tokio::time::timeout(std::time::Duration::from_millis(q_timeout), client.query(&stmt, &param_refs)).await {
+                            Ok(Ok(rows)) => {
                                 let mut result = Vec::new();
 
                                 for row in rows {
                                     let mut obj = serde_json::Map::new();
 
                                     for (i, col) in row.columns().iter().enumerate() {
-
                                         let val =
                                             if let Ok(v) = row.try_get::<_, String>(i) {
                                                 serde_json::Value::String(v)
@@ -567,8 +720,20 @@ pub fn run_async_operation(
                                                 serde_json::Value::Number(v.into())
                                             } else if let Ok(v) = row.try_get::<_, i32>(i) {
                                                 serde_json::Value::Number(v.into())
+                                            } else if let Ok(v) = row.try_get::<_, f64>(i) {
+                                                serde_json::Number::from_f64(v)
+                                                    .map(serde_json::Value::Number)
+                                                    .unwrap_or(serde_json::Value::Null)
                                             } else if let Ok(v) = row.try_get::<_, bool>(i) {
                                                 serde_json::Value::Bool(v)
+                                            } else if let Ok(v) = row.try_get::<_, uuid::Uuid>(i) {
+                                                serde_json::Value::String(v.to_string())
+                                            } else if let Ok(v) = row.try_get::<_, chrono::NaiveDateTime>(i) {
+                                                serde_json::Value::String(v.format("%Y-%m-%d %H:%M:%S").to_string())
+                                            } else if let Ok(v) = row.try_get::<_, chrono::DateTime<chrono::Utc>>(i) {
+                                                serde_json::Value::String(v.to_rfc3339())
+                                            } else if let Ok(v) = row.try_get::<_, serde_json::Value>(i) {
+                                                v
                                             } else {
                                                 serde_json::Value::Null
                                             };
@@ -581,14 +746,22 @@ pub fn run_async_operation(
 
                                 serde_json::Value::Array(result)
                             }
-                            Err(e) => serde_json::json!({
-                                "error": e.to_string()
-                            }),
+                            Ok(Err(e)) => {
+                                serde_json::json!({ "error": e.to_string() })
+                            }
+                            Err(_) => {
+                                println!("{} {} Query TIMEOUT after {}ms", crate::utils::blue("[Titan]"), crate::utils::red("DB:"), q_timeout);
+                                serde_json::json!({ "error": format!("Query timeout after {} milliseconds", q_timeout) })
+                            }
                         }
                     }
-                    Err(e) => serde_json::json!({
-                        "error": e.to_string()
-                    }),
+                    Ok(Err(e)) => {
+                        serde_json::json!({ "error": e.to_string() })
+                    }
+                    Err(_) => {
+                        println!("{} {} Pool checkout TIMEOUT after {}ms", crate::utils::blue("[Titan]"), crate::utils::red("DB:"), p_timeout);
+                        serde_json::json!({ "error": format!("Database connection timeout after {} milliseconds", p_timeout) })
+                    }
                 }
             }
 

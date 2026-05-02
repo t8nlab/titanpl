@@ -185,6 +185,24 @@ if (!globalThis.__TITAN_CORE_LOADED__) {
     };
 
     t.response = titanResponse;
+    
+    // Type Casting API
+    t.types = {
+        STRING: (val) => ({ _titanType: "string", value: String(val) }),
+        NUMBER: (val) => ({ _titanType: "number", value: Number(val) }),
+        BOOLEAN: (val) => ({ _titanType: "boolean", value: Boolean(val) }),
+        UUID: (val) => ({ _titanType: "uuid", value: String(val) }),
+        TIMESTAMP: (val) => ({ _titanType: "timestamp", value: String(val) }),
+        TIMESTAMPTZ: (val) => ({ _titanType: "timestamptz", value: String(val) }),
+        DATE: (val) => ({ _titanType: "date", value: String(val) }),
+        JSON: (val) => ({ _titanType: "json", value: val }),
+        VARCHAR: (val) => ({ _titanType: "varchar", value: String(val) }),
+        CHAR: (val) => ({ _titanType: "char", value: String(val) }),
+        TEXT: (val) => ({ _titanType: "text", value: String(val) }),
+        INT: (val) => ({ _titanType: "int", value: Math.floor(Number(val)) }),
+        BIGINT: (val) => ({ _titanType: "bigint", value: String(val) }),
+        FLOAT: (val) => ({ _titanType: "float", value: Number(val) }),
+    };
 
     // Drift Support (Flexible: allows sync & async)
     globalThis.drift = function (value) {
@@ -207,13 +225,13 @@ if (!globalThis.__TITAN_CORE_LOADED__) {
     if (t.db && !t.db.__titanWrapped) {
         const nativeDbConnect = t.db.connect;
 
-        t.db.connect = function (connString, options = {}) {
-            const conn = nativeDbConnect(connString, options);
+        t.db.connect = function (connString, connOptions = {}) {
+            const conn = nativeDbConnect(connString, connOptions);
 
             if (!conn.query.__titanWrapped) {
                 const nativeQuery = conn.query;
 
-                conn.query = function (sql, params = []) {
+                conn.query = function (sql, params = [], options = {}) {
                     if (typeof sql !== "string" || !sql.trim()) {
                         throw new Error("db.query(): SQL string required");
                     }
@@ -222,17 +240,23 @@ if (!globalThis.__TITAN_CORE_LOADED__) {
                         throw new Error("db.query(): params must be array");
                     }
 
+                    // Inherit pool_timeout from connection if not overridden
+                    const finalOptions = {
+                        pool_timeout: connOptions.pool_timeout,
+                        ...options
+                    };
+
                     return createAsyncOp({
                         __titanAsync: true,
                         type: "db_query",
                         data: {
                             conn: connString,
                             query: sql,
-                            params
+                            params,
+                            options: finalOptions
                         }
                     });
                 };
-
                 conn.query.__titanWrapped = true;
             }
 

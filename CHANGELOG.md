@@ -1,5 +1,52 @@
 # Changelog - Titan Planet ⏣
 
+## [7.0.3] - 2026-05-02
+
+### 🚀 Database Engine Overhaul & SSL Support
+
+This release introduces a hardened PostgreSQL integration with production-grade connection pooling, native SSL support, and robust, millisecond-precision timeout management to eliminate runtime hangs.
+
+### ✨ Highlights
+
+#### **Production-Grade Connection Pooling**
+Optimize your database resources with new granular pooling controls.
+* **Pool Sizing**: `t.db.connect()` now supports `max` and `min` (idle connections) options.
+* **SSL/TLS Support**: Native support for encrypted connections (`ssl: true`), essential for Supabase and other managed cloud providers.
+
+#### **Robust Timeout Management**
+Protect your workers from hanging indefinitely during database outages.
+* **Millisecond Precision**: All timeouts are now measured in milliseconds (ms).
+* **Dual-Layer Protection**: 
+  * `pool_timeout`: Control how long to wait for a connection from the pool.
+  * `timeout`: Control maximum execution time for individual queries.
+* **Smart Defaults**: Standardized on 5s pool checkout and 10s query execution limits.
+
+#### **Type Casting API (`t.types`)**
+New deterministic API for explicit database type marking. This ensures complex types like UUIDs and Timestamps are correctly interpreted by the PostgreSQL driver.
+* **Supported Types**: `UUID`, `TIMESTAMP`, `JSON`, `BIGINT`, `INT`, `DATE`, and more.
+* **Example Usage**:
+  ```js
+  import { types, db, drift } from "@titanpl/native";
+
+  export default defineAction((req) => {
+    const conn = drift(db.connect(t.env.DATABASE_URL));
+    // Explicitly mark the ID as a UUID
+    drift(conn.query("INSERT INTO users (id) VALUES ($1)", [types.UUID(req.body.id)]));
+  });
+  ```
+
+#### **Developer Experience & IntelliSense**
+* **Full JSDoc Coverage**: Rich documentation and examples now appear instantly in your IDE for all database operations.
+* **Type-Safe Options**: New `ConnectionOptions` and `QueryOptions` interfaces in `@titanpl/native`.
+* **Clean Production Logs**: Database logs now respect `TITAN_DEV`. Noisy "Operation started" logs are hidden in production mode while critical errors remain visible.
+
+### 🔧 Fixed
+* **Worker Deadlocks**: Resolved issues where a lost DB connection could cause V8 isolates to block indefinitely.
+* **SSL Handshake Errors**: Fixed certificate validation issues when connecting to managed poolers (like Supabase).
+* **Ignored `min` Pool Setting**: Correctly applied the minimum idle connection setting in the Rust backend.
+
+---
+
 ## [7.0.2] - 2026-04-08
 
 ### 🚀 Dynamic Routing & SPA Support

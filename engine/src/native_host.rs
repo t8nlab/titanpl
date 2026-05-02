@@ -146,8 +146,8 @@ pub async fn run_native_host(lib_path: &str) {
                 };
 
                 #[cfg(windows)]
-                let is_bad = unsafe {
-                    extern "system" {
+                let is_bad = {
+                    unsafe extern "system" {
                         fn IsBadReadPtr(lp: *const std::os::raw::c_void, ucb: usize) -> i32;
                     }
                     IsBadReadPtr(c_res as *const _, 1) != 0
