@@ -1,0 +1,38 @@
+{
+  "date": "2026-05-02_18-19-54",
+  "commit": "fb16f20",
+  "dev": {
+    "env": {
+      "cpus": 4,
+      "memFree": 11999358976,
+      "memTotal": 16766431232,
+      "pid": 3056,
+      "platform": "linux",
+      "uptime": 0
+    },
+    "failed": [
+      "ls",
+      "ls_v8"
+    ],
+    "ok": false,
+    "runtime": {
+      "memory": {},
+      "pid": 3056,
+      "uptime": 0
+    },
+    "tests": {
+      "buffer": true,
+      "crypto": true,
+      "drift": true,
+      "fs": true,
+      "global_v8": true,
+      "ls": false,
+      "ls_v8": false
+    },
+    "timestamp": "2026-05-02T18:19:49.498Z",
+    "warnings": [
+      "ls: Error: LS value mismatch",
+      "ls_v8: TypeError: t.ls.serialise is not a function"
+    ]
+  }
+}
