@@ -120,6 +120,87 @@ export const url: any;
 export const response: any;
 export const valid: any;
 
+export interface TaskStatus {
+    /** The current state of the task. */
+    state: "pending" | "running" | "done" | "failed";
+    /** The Unix timestamp (ms) when the task was started. */
+    startedAt: number;
+    /** The duration of the task in milliseconds (present if done or failed). */
+    duration?: number;
+    /** The error message if the task failed. */
+    error?: string;
+}
+
+export interface TaskOptions {
+    /** Whether to deduplicate tasks by key. If true, spawning a task with an existing key will be a no-op if it's already pending or running. Defaults to true. */
+    dedupe?: boolean;
+    /** Timeout in milliseconds for the task execution. Defaults to 30000 (30s). */
+    timeout?: number;
+}
+
+export interface TaskModule {
+    /**
+     * Spawns a single background job that runs the named action.
+     * 
+     * @param key - Unique task identifier used for deduplication and status tracking.
+     * @param actionName - The name of the Titan action to execute (e.g., "emails/send").
+     * @param payload - JSON payload delivered as req.body to the background action.
+     * @param options - Task configuration options.
+     * 
+     * @example
+     * ```js
+     * task.spawn(`cleanup:${userId}`, "user/cleanup", { userId });
+     * ```
+     */
+    spawn(key: string, actionName: string, payload?: any, options?: TaskOptions): void;
+
+    /**
+     * Enqueues a job in a FIFO queue. Jobs with the same queueKey run sequentially.
+     * 
+     * @param queueKey - Queue identifier. All jobs sharing this key run one-at-a-time in order.
+     * @param actionName - The name of the Titan action to execute.
+     * @param payload - JSON payload delivered as req.body to the background action.
+     * @param options - Task configuration options (timeout).
+     * 
+     * @example
+     * ```js
+     * task.enqueue(`sync:${userId}`, "data/sync", { page: 1 });
+     * task.enqueue(`sync:${userId}`, "data/sync", { page: 2 });
+     * ```
+     */
+    enqueue(queueKey: string, actionName: string, payload?: any, options?: { timeout?: number }): void;
+
+    /**
+     * Stops a task by removing it from the registry.
+     * Note: A currently running task will complete naturally; this prevents it from being tracked.
+     * 
+     * @param key - The unique task key to stop.
+     */
+    stop(key: string): void;
+
+    /**
+     * Returns the current status of a task by its key.
+     * 
+     * @param key - The unique task key to inspect.
+     */
+    status(key: string): TaskStatus | null;
+
+    /**
+     * Clears all pending (not-yet-started) jobs from a queue.
+     * Currently running jobs in the queue will complete naturally.
+     * 
+     * @param queueKey - The queue identifier to clear.
+     */
+    clear(queueKey: string): void;
+}
+
+/**
+ * Managed background task scheduler.
+ * 
+ * Allows offloading long-running work to background workers by executing Titan actions.
+ */
+export const task: TaskModule;
+
 // Serialization
 /** Binary-serializes a JavaScript value using V8's fast internal format. */
 export function serialize(value: any): Uint8Array;

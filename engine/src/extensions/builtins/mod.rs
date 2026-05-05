@@ -5,6 +5,7 @@ pub mod db;
 pub mod ws;
 pub mod share_context;
 pub mod system;
+pub mod task;
 
 use v8;
 use crate::extensions::{v8_str, blue, red};
@@ -170,4 +171,30 @@ fn setup_native_utils(scope: &mut v8::HandleScope, t_obj: v8::Local<v8::Object>)
     
     let ws_key = v8_str(scope, "ws");
     t_obj.set(scope, ws_key.into(), ws_obj.into());
+
+    // t.task (Background job scheduler)
+    let task_obj = v8::Object::new(scope);
+
+    let spawn_fn = v8::Function::new(scope, task::native_task_spawn).unwrap();
+    let spawn_key = v8_str(scope, "_native_spawn");
+    task_obj.set(scope, spawn_key.into(), spawn_fn.into());
+
+    let enqueue_fn = v8::Function::new(scope, task::native_task_enqueue).unwrap();
+    let enqueue_key = v8_str(scope, "_native_enqueue");
+    task_obj.set(scope, enqueue_key.into(), enqueue_fn.into());
+
+    let stop_fn = v8::Function::new(scope, task::native_task_stop).unwrap();
+    let stop_key = v8_str(scope, "_native_stop");
+    task_obj.set(scope, stop_key.into(), stop_fn.into());
+
+    let status_fn = v8::Function::new(scope, task::native_task_status).unwrap();
+    let status_key = v8_str(scope, "_native_status");
+    task_obj.set(scope, status_key.into(), status_fn.into());
+
+    let clear_fn = v8::Function::new(scope, task::native_task_clear).unwrap();
+    let clear_key = v8_str(scope, "_native_clear");
+    task_obj.set(scope, clear_key.into(), clear_fn.into());
+
+    let task_key = v8_str(scope, "task");
+    t_obj.set(scope, task_key.into(), task_obj.into());
 }

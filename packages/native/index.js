@@ -41,6 +41,7 @@ export const response = t.response;
 export const valid = t.valid;
 export const types = t.types;
 export const env = t.env;
+export const task = t.task;
 export const drift = globalThis.drift;
 
 // Serialization

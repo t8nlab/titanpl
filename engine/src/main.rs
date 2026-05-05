@@ -627,6 +627,8 @@ async fn main() -> Result<()> {
 
     // Initialize Global WS Channels (Must happen BEFORE state is moved into router)
     extensions::WS_CHANNELS.get_or_init(|| state.ws_sockets.clone());
+    // Initialize Global Task Runtime (allows task scheduler to dispatch named actions)
+    extensions::TASK_RUNTIME.get_or_init(|| state.runtime.clone());
 
     // Router
     let app = Router::new()

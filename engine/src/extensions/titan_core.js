@@ -266,4 +266,93 @@ if (!globalThis.__TITAN_CORE_LOADED__) {
         t.db.__titanWrapped = true;
     }
 
+    // =========================================================================
+    // t.task — Managed background job scheduler
+    // =========================================================================
+    //
+    // Tasks execute NAMED TITAN ACTIONS with a JSON payload.
+    // The action file receives the payload as req.body.
+    // Full V8 runtime support inside task actions: drift, t.fetch, t.db, etc.
+    //
+    // API:
+    //   t.task.spawn(key, actionName, payload?, options?)
+    //   t.task.enqueue(queueKey, actionName, payload?, options?)
+    //   t.task.stop(key)
+    //   t.task.status(key) → { state, startedAt, duration? } | null
+    //   t.task.clear(queueKey)
+    //
+    // Example:
+    //   t.task.spawn(`refresh:${userId}`, "emails/refresh", { userId, count: 10 })
+    //   t.task.enqueue(`sync:${userId}`, "emails/sync", { page: 2 }, { timeout: 5000 })
+
+    if (t.task && !t.task.__titanWrapped) {
+        const _native = t.task; // exposes: _native_spawn, _native_enqueue, _native_stop, _native_status, _native_clear
+
+        // Auto-incrementing job key suffix for enqueue
+        let _jobCounter = 0;
+        function _jobKey(queueKey) {
+            return `${queueKey}:${Date.now()}:${++_jobCounter}`;
+        }
+
+        t.task = {
+            /**
+             * Spawn a single background job that runs the named action.
+             * Deduplicated by key — if already Pending/Running, this is a no-op.
+             *
+             * @param {string} key         - Unique task identifier (used for dedup + status)
+             * @param {string} actionName  - Titan action name (e.g. "emails/refresh")
+             * @param {object} [payload]   - JSON payload delivered as req.body in the action
+             * @param {{ dedupe?: boolean, timeout?: number }} [options]
+             */
+            spawn(key, actionName, payload = null, options = {}) {
+                _native._native_spawn(key, actionName, payload, options);
+            },
+
+            /**
+             * Enqueue a job in a FIFO queue. Jobs with the same queueKey run one at a time.
+             *
+             * @param {string} queueKey    - Queue identifier (all jobs sharing this key are sequential)
+             * @param {string} actionName  - Titan action name to execute
+             * @param {object} [payload]   - JSON payload delivered as req.body
+             * @param {{ timeout?: number }} [options]
+             */
+            enqueue(queueKey, actionName, payload = null, options = {}) {
+                const jobKey = _jobKey(queueKey);
+                _native._native_enqueue(queueKey, jobKey, actionName, payload, options);
+            },
+
+            /**
+             * Stop a task: removes it from the registry.
+             * A currently-running action will complete naturally; this prevents restarts.
+             *
+             * @param {string} key
+             */
+            stop(key) {
+                _native._native_stop(key);
+            },
+
+            /**
+             * Get the current status of a task.
+             *
+             * @param {string} key
+             * @returns {{ state: "pending"|"running"|"done"|"failed", startedAt: number, duration?: number, error?: string } | null}
+             */
+            status(key) {
+                return _native._native_status(key);
+            },
+
+            /**
+             * Clear all pending (not-yet-started) jobs from a queue.
+             * The currently-running job (if any) completes naturally.
+             *
+             * @param {string} queueKey
+             */
+            clear(queueKey) {
+                _native._native_clear(queueKey);
+            }
+        };
+
+        t.task.__titanWrapped = true;
+    }
+
 }

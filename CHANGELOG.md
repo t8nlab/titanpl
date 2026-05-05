@@ -1,5 +1,38 @@
 # Changelog - Titan Planet ⏣
 
+## [7.0.4] - 2026-05-05
+
+### 🚀 Managed Background Task System (`t.task`)
+
+This release introduces `t.task`, a production-grade background job orchestration system built directly into the TitanPL runtime. Offload long-running I/O, heavy computations, or sequential workflows to background workers with zero infrastructure overhead.
+
+### ✨ Highlights
+
+#### **First-Class Background Jobs**
+Move heavy work out of the request-response cycle effortlessly. Background tasks execute standard Titan actions, meaning they have full access to `drift()`, `t.fetch`, `t.db`, `shareContext`, and all other gravity runtime apis.
+
+* **`t.task.spawn()`**: Dispatch a one-off background job. Supports built-in **deduplication** by key — perfect for "refresh" or "cleanup" tasks where you only want one instance running at a time.
+* **`t.task.enqueue()`**: Native **FIFO Queues**. Jobs in the same queue are executed strictly one-after-another, ensuring data consistency for sequential workflows without manual locks.
+
+#### **Lifecycle & Observability**
+* **Status Tracking**: Query the real-time state of any task (`pending`, `running`, `done`, or `failed`) including start time and execution duration.
+* **Smart Registry**: Completed task metadata remains queryable until the key is reused, allowing for easy "is it done yet?" checks from the frontend.
+* **Queue Management**: Instantly clear pending jobs or stop specific tasks with `t.task.clear()` and `t.task.stop()`.
+
+#### **Production-Ready Logging**
+* **Dev Mode Verbosity**: Rich lifecycle logs (`[Titan Task]`) show exactly when jobs are queued, started, and finished.
+* **Silent Production**: All background task logs are automatically suppressed when `TITAN_DEV=0`, ensuring clean production stdout.
+
+#### **Developer Experience**
+* **Full IntelliSense**: The `@titanpl/native` package now includes comprehensive TypeScript definitions and JSDoc examples for the entire task API.
+* **Action-Based Dispatch**: No need to serialize functions. Simply specify the action name (e.g., `"emails/send"`) and a JSON payload.
+
+### 🔧 Fixed
+* **Registry Memory Leaks**: Implemented lazy cleanup of stale task metadata during key reuse.
+* **Status Polling Race**: Fixed an issue where `status()` would return null immediately after a task finished; entries are now retained until overwritten.
+
+---
+
 ## [7.0.3] - 2026-05-02
 
 ### 🚀 Database Engine Overhaul & SSL Support

@@ -234,6 +234,17 @@ export const password: typeof t.password;
 export const db: typeof t.db;
 
 /**
+ * Managed background task scheduler.
+ *
+ * Allows offloading long-running or CPU-intensive work to background workers 
+ * by executing named Titan actions asynchronously.
+ * 
+ * Re-exported from the `t` global for module-style imports.
+ * @see {@link TitanRuntimeUtils.task} for full documentation and examples.
+ */
+export const task: typeof t.task;
+
+/**
  * WebSocket communication utilities.
  *
  * @example
@@ -800,6 +811,110 @@ declare global {
              * @param message - The text message to broadcast.
              */
             broadcast(message: string): void;
+        };
+
+        /**
+         * # Background Task Scheduler (`t.task`)
+         *
+         * Managed background execution system for offloading work to the Titan 
+         * worker pool. Tasks execute **named Titan actions** with a JSON payload, 
+         * inheriting the full power of the runtime (drift, db, fetch) in the background.
+         *
+         * ## Features
+         *
+         * - **Isolation**: Each task runs in a fresh background worker isolate.
+         * - **Queues**: FIFO sequential execution for related jobs.
+         * - **Deduplication**: Prevent redundant work by keying tasks.
+         * - **Status Tracking**: Inspect the lifecycle (pending, running, done, failed).
+         *
+         * @example
+         * ```js
+         * // 1. Spawning a one-off background task
+         * export function onSignup(req) {
+         *   // Send welcome email in background
+         *   t.task.spawn(`welcome:${req.body.email}`, "emails/send-welcome", {
+         *     to: req.body.email,
+         *     name: req.body.name
+         *   });
+         * 
+         *   return { status: "Account created, email sending in background..." };
+         * }
+         * ```
+         *
+         * @example
+         * ```js
+         * // 2. Sequential Queue (FIFO)
+         * // Jobs in the same queue key run one after another, never in parallel.
+         * t.task.enqueue(`sync:${userId}`, "sync/fetch-page", { page: 1 });
+         * t.task.enqueue(`sync:${userId}`, "sync/fetch-page", { page: 2 });
+         * ```
+         *
+         * @see https://titanpl.vercel.app/docs/how-to-use/08-background-tasks — Background Tasks
+         */
+        task: {
+            /**
+             * Spawns a single background job that executes the named action.
+             * 
+             * By default, tasks are **deduplicated by key**. if a task with the 
+             * same key is already `pending` or `running`, this call is a no-op.
+             *
+             * @param key - A unique identifier for the task (e.g. `user:123:refresh`).
+             * @param actionName - The path/name of the action to run (e.g. `cron/cleanup`).
+             * @param payload - JSON-serializable object passed as `req.body` to the task action.
+             * @param options - Optional configuration for deduplication and timeouts.
+             */
+            spawn(key: string, actionName: string, payload?: any, options?: {
+                /** If true, skip if a task with this key is already active. Default: true. */
+                dedupe?: boolean;
+                /** Kill task after these many milliseconds. Default: 30000. */
+                timeout?: number;
+            }): void;
+
+            /**
+             * Enqueues a job in a FIFO sequential queue.
+             * 
+             * Jobs sharing the same `queueKey` are executed strictly one-at-a-time 
+             * in the order they were added.
+             *
+             * @param queueKey - The identifier for the queue.
+             * @param actionName - The action to execute.
+             * @param payload - JSON-serializable payload for `req.body`.
+             * @param options - Optional configuration (timeout).
+             */
+            enqueue(queueKey: string, actionName: string, payload?: any, options?: {
+                timeout?: number;
+            }): void;
+
+            /**
+             * Force-stops a task and removes its tracking entry.
+             * 
+             * @param key - The unique task key to stop.
+             */
+            stop(key: string): void;
+
+            /**
+             * Inspects the current state and metadata of a background task.
+             * 
+             * @param key - The unique task key to check.
+             * @returns The task status object or null if not found.
+             * 
+             * @example
+             * const status = t.task.status("sync:123");
+             * if (status?.state === "running") { ... }
+             */
+            status(key: string): {
+                state: "pending" | "running" | "done" | "failed";
+                startedAt: number;
+                duration?: number;
+                error?: string;
+            } | null;
+
+            /**
+             * Removes all pending jobs from a specific queue.
+             * 
+             * @param queueKey - The queue identifier to drain.
+             */
+            clear(queueKey: string): void;
         };
 
 
