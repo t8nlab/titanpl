@@ -1,9 +1,9 @@
 // =============================================================================
 //  Titan Planet — Type Definitions
 //  Framework: JavaScript-first backend compiled to native Rust + Axum binary
-//  Version:   v26 (Stable)
+//  Version:   v7 (Stable)
 //  Docs:      https://titanpl.vercel.app/docs
-//  GitHub:    https://github.com/ezet-galaxy/titanpl
+//  GitHub:    https://github.com/t8nlab/titanpl
 // =============================================================================
 
 // ---------------------------------------------------------------------------
