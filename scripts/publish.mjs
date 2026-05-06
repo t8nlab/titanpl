@@ -3,158 +3,124 @@ import path from 'path';
 import { execSync } from 'child_process';
 import { fileURLToPath } from 'url';
 
+/**
+ * Titan CLI Publish Script
+ * 
+ * This script handles the specialized publishing process for @titanpl/cli.
+ * It ensures the version is bumped and all required assets (like templates)
+ * are correctly bundled before publishing to NPM.
+ */
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const ROOT_DIR = path.join(__dirname, '..');
+const CLI_DIR = path.join(ROOT_DIR, 'packages', 'cli');
 
 const version = process.argv[2];
 
+// UI Helpers
+const cyan = (t) => `\x1b[36m${t}\x1b[0m`;
+const green = (t) => `\x1b[32m${t}\x1b[0m`;
+const yellow = (t) => `\x1b[33m${t}\x1b[0m`;
+const red = (t) => `\x1b[31m${t}\x1b[0m`;
+const bold = (t) => `\x1b[1m${t}\x1b[0m`;
+
 if (!version) {
-    console.error("Please provide a version number (e.g., npm run publish 1.5.0)");
+    console.error(red("\n❌ Error: Please provide a version number."));
+    console.log(yellow("Usage: node scripts/publish.mjs <version> (e.g. 1.5.0)\n"));
     process.exit(1);
 }
 
-const getPackageJsons = (baseDir) => {
-    const results = [];
-    const absoluteBase = path.resolve(baseDir);
+async function publishCLI() {
+    console.log(cyan(`\n🚀 Preparing to publish @titanpl/cli v${version}...`));
 
-    // Add root
-    results.push(path.join(absoluteBase, 'package.json'));
-
-    // Check packages/
-    const packagesDir = path.join(absoluteBase, 'packages');
-    if (fs.existsSync(packagesDir)) {
-        fs.readdirSync(packagesDir).forEach(p => {
-            const pkgPath = path.join(packagesDir, p, 'package.json');
-            if (fs.existsSync(pkgPath)) results.push(pkgPath);
-        });
+    // 1. Update packages/cli/package.json
+    const pkgPath = path.join(CLI_DIR, 'package.json');
+    if (!fs.existsSync(pkgPath)) {
+        console.error(red(`❌ Error: Could not find package.json at ${pkgPath}`));
+        process.exit(1);
     }
 
+    const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8'));
+    const oldVersion = pkg.version;
+    pkg.version = version;
 
-    // Check titanpl-sdk
-    const sdkDir = path.join(absoluteBase, 'titanpl-sdk');
-    if (fs.existsSync(sdkDir)) {
-        const pkgPath = path.join(sdkDir, 'package.json');
-        if (fs.existsSync(pkgPath)) results.push(pkgPath);
-    }
+    // Optional: If we want to ensure it uses the latest @titanpl/packet if it exists
+    // but the user said "not toch others", so we keep dependencies as they are (usually "latest")
 
-    return results;
-};
+    fs.writeFileSync(pkgPath, JSON.stringify(pkg, null, 2) + '\n');
+    console.log(green(`✅ Updated version in CLI package.json: ${oldVersion} -> ${version}`));
 
-const packageJsonPaths = getPackageJsons(ROOT_DIR);
+    // 2. Sync Templates
+    // The CLI needs the 'templates' directory from the root to be included in the package.
+    const srcTemplatesDir = path.join(ROOT_DIR, 'templates');
+    const destTemplatesDir = path.join(CLI_DIR, 'templates');
 
-console.log(`Bumping to version ${version}...`);
+    let templatesCopied = false;
 
-const packageJsons = packageJsonPaths.map(pkgPath => {
-    try {
-        return {
-            dir: path.dirname(pkgPath),
-            pkgPath,
-            content: JSON.parse(fs.readFileSync(pkgPath, 'utf8'))
-        };
-    } catch (e) {
-        return null;
-    }
-}).filter(Boolean);
-
-// Find names of all internal packages to bump their dependencies too
-const packageNames = packageJsons.map(p => p.content.name);
-
-packageJsons.forEach(({ pkgPath, content }) => {
-    content.version = version;
-
-    if (content.dependencies) {
-        for (const dep of Object.keys(content.dependencies)) {
-            if (packageNames.includes(dep)) {
-                content.dependencies[dep] = version;
-            }
-        }
-    }
-
-    if (content.optionalDependencies) {
-        for (const dep of Object.keys(content.optionalDependencies)) {
-            if (packageNames.includes(dep)) {
-                content.optionalDependencies[dep] = version;
-            }
-        }
-    }
-
-    if (content.devDependencies) {
-        for (const dep of Object.keys(content.devDependencies)) {
-            if (packageNames.includes(dep)) {
-                content.devDependencies[dep] = version;
-            }
-        }
-    }
-
-    fs.writeFileSync(pkgPath, JSON.stringify(content, null, 2) + '\n');
-    console.log(`Updated version in ${content.name}`);
-});
-
-console.log("\nVersions bumped successfully!");
-console.log("Publishing packages...");
-
-for (const { dir, content } of packageJsons) {
-    if (dir.includes('templates')) continue; // Don't publish templates
-    if (content.name !== '@titanpl/cli' && content.name !== '@titanpl/packet') continue; // ONLY publish CLI and Packet
-
-    // Special case: Copy engine binary if it's an engine package
-    if (content.name.startsWith('@titanpl/engine-')) {
-        const platform = content.name.split('-')[1]; // win32, linux, darwin
-        const arch = content.name.split('-')[2];
-        const isWin = platform === 'win32';
-        const binName = isWin ? 'titan-server.exe' : 'titan-server';
-        const srcPath = path.join(ROOT_DIR, 'engine', 'target', 'release', 'titan-server' + (isWin ? '.exe' : ''));
-        const destBinDir = path.join(dir, 'bin');
-        const destPath = path.join(destBinDir, binName);
-
-        if (fs.existsSync(srcPath)) {
-            console.log(`📦 Copying ${binName} to ${content.name}...`);
-            if (!fs.existsSync(destBinDir)) fs.mkdirSync(destBinDir, { recursive: true });
-            fs.copyFileSync(srcPath, destPath);
-        } else {
-            console.warn(`⚠️ Warning: Engine binary not found at ${srcPath}. Skipping copy, this package might be BROKEN.`);
-        }
-    }
-
-    // Special case: Copy templates into CLI package
-    let copiedTemplates = false;
-    const destTemplatesDir = path.join(dir, 'templates');
-    if (content.name === '@titanpl/cli') {
-        const srcTemplatesDir = path.join(ROOT_DIR, 'templates');
-        if (fs.existsSync(srcTemplatesDir)) {
-            console.log(`📦 Copying templates to ${content.name}...`);
-            const copyRecursive = (src, dest) => {
-                if (!fs.existsSync(dest)) fs.mkdirSync(dest, { recursive: true });
-                for (const file of fs.readdirSync(src)) {
-                    const srcPath = path.join(src, file);
-                    const destPath = path.join(dest, file);
-                    if (fs.lstatSync(srcPath).isDirectory()) {
-                        copyRecursive(srcPath, destPath);
-                    } else {
-                        fs.copyFileSync(srcPath, destPath);
-                    }
+    if (fs.existsSync(srcTemplatesDir)) {
+        console.log(cyan(`📦 Bundling templates into CLI package...`));
+        
+        const copyRecursive = (src, dest) => {
+            if (!fs.existsSync(dest)) fs.mkdirSync(dest, { recursive: true });
+            for (const file of fs.readdirSync(src)) {
+                const sp = path.join(src, file);
+                const dp = path.join(dest, file);
+                if (fs.lstatSync(sp).isDirectory()) {
+                    copyRecursive(sp, dp);
+                } else {
+                    fs.copyFileSync(sp, dp);
                 }
-            };
+            }
+        };
+
+        try {
+            // Clean destination if it exists
+            if (fs.existsSync(destTemplatesDir)) {
+                fs.rmSync(destTemplatesDir, { recursive: true, force: true });
+            }
+            
             copyRecursive(srcTemplatesDir, destTemplatesDir);
-            copiedTemplates = true;
+            templatesCopied = true;
+            console.log(green(`✔ Templates bundled successfully.`));
+        } catch (err) {
+            console.error(red(`❌ Failed to copy templates: ${err.message}`));
+            process.exit(1);
+        }
+    } else {
+        console.warn(yellow(`⚠️ Warning: Root templates directory not found. Package might be incomplete.`));
+    }
+
+    // 3. NPM Publish
+    const tag = version.includes('-') ? (version.split('-')[1].split('.')[0] || 'next') : 'latest';
+    
+    console.log(cyan(`\n================================================`));
+    console.log(bold(`🚢 Publishing @titanpl/cli @ ${version} [Tag: ${tag}]`));
+    console.log(cyan(`================================================\n`));
+
+    try {
+        // We use --access public for scoped packages
+        execSync(`npm publish --tag ${tag} --access public`, { 
+            cwd: CLI_DIR, 
+            stdio: 'inherit' 
+        });
+        console.log(green(`\n✅ Successfully published @titanpl/cli @ ${version}`));
+    } catch (err) {
+        console.error(red(`\n❌ NPM Publish failed.`));
+        // We don't exit here yet so we can cleanup
+    } finally {
+        // 4. Cleanup
+        if (templatesCopied && fs.existsSync(destTemplatesDir)) {
+            console.log(cyan(`\n🧹 Cleaning up bundled templates...`));
+            fs.rmSync(destTemplatesDir, { recursive: true, force: true });
+            console.log(green(`✔ Cleanup complete.`));
         }
     }
 
-    const tag = version.includes('-') ? version.split('-')[1].split('.')[0] : 'latest';
-    console.log(`\n======================================`);
-    console.log(`🚀 Publishing ${content.name} @ ${version} [Tag: ${tag}]...`);
-    console.log(`======================================`);
-    try {
-        execSync(`npm publish --tag ${tag}`, { cwd: dir, stdio: 'inherit' });
-        console.log(`✅ successfully published ${content.name} @ ${version}`);
-    } catch (err) {
-        console.error(`❌ Failed to publish ${content.name}`);
-    } finally {
-        if (copiedTemplates && fs.existsSync(destTemplatesDir)) {
-            console.log(`🧹 Cleaning up templates from ${content.name}...`);
-            fs.rmSync(destTemplatesDir, { recursive: true, force: true });
-        }
-    }
+    console.log(bold(green(`\n✨ Done! @titanpl/cli is now live.\n`)));
 }
-console.log("\nAll done!");
+
+publishCLI().catch(err => {
+    console.error(red(`\n💥 Fatal Error: ${err.message}`));
+    process.exit(1);
+});
