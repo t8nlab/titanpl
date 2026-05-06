@@ -36,6 +36,7 @@ native-tls = "0.2"
 postgres-native-tls = "0.5"
 uuid = { version = "1.10.0", features = ["v4"] }
 futures-util = "0.3.30"
+gravity = { path = "../gravity" }
 
 # Performance: Global Allocator
 mimalloc = { version = "0.1", default-features = false }

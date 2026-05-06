@@ -17,16 +17,14 @@ use std::{collections::HashMap, fs, path::PathBuf, sync::Arc};
 use tokio::net::TcpListener;
 
 mod action_management;
-mod extensions;
 mod fast_path;
-mod runtime;
-mod utils;
-mod native_host;
 
-use action_management::{DynamicRoute, RouteVal, match_dynamic_route};
+use gravity::{RuntimeManager, WsMessage};
+use gravity::extensions;
+use gravity::utils::{blue, gray, green, red, white, yellow};
+use gravity::native_host;
+use action_management::{RouteVal, DynamicRoute, match_dynamic_route, scan_actions};
 use fast_path::{FastPathRegistry, PrecomputedRoute};
-use runtime::RuntimeManager;
-use utils::{blue, gray, green, red, white, yellow};
 
 /// Global allocator: mimalloc for ~5-15% better allocation throughput.
 #[global_allocator]
@@ -43,8 +41,8 @@ struct AppState {
     precomputed: Arc<HashMap<String, PrecomputedRoute>>,
     /// When true: disable per-request logging and timings injection
     production_mode: bool,
-    /// Active WebSocket channels
-    ws_sockets: Arc<DashMap<String, mpsc::UnboundedSender<Message>>>,
+    /// Active WebSocket channels (Gravity compatible)
+    ws_sockets: Arc<DashMap<String, mpsc::UnboundedSender<WsMessage>>>,
 }
 
 async fn root_route(state: State<AppState>, req: AxumRequest) -> impl IntoResponse {
@@ -61,11 +59,6 @@ async fn handler(State(state): State<AppState>, req: AxumRequest) -> impl IntoRe
     let path = req.uri().path().to_string();
     let strict_key = format!("{}:{}", method, path);
 
-    // Phase 1: Fast-Path Check (before ANY body/header parsing)
-    // This is the critical optimization. For static actions and reply routes,
-    // we return pre-computed bytes without touching the request body, headers,
-    // or V8 runtime. This path costs ~2-5µs vs ~50-100µs for the V8 path.
-
     let start = Instant::now();
     let log_enabled = !state.production_mode;
 
@@ -80,9 +73,7 @@ async fn handler(State(state): State<AppState>, req: AxumRequest) -> impl IntoRe
             // Precomputed reply routes
             "json" | "text" => {
                 if let Some(precomputed) = state.precomputed.get(&strict_key) {
-
                     if state.production_mode {
-                        // Benchmark mode → zero overhead
                         return precomputed.to_axum_response();
                     }
 
@@ -109,7 +100,6 @@ async fn handler(State(state): State<AppState>, req: AxumRequest) -> impl IntoRe
                     return response;
                 }
 
-                // Fallback (should never happen)
                 if route.r#type == "json" {
                     return Json(route.value.clone()).into_response();
                 }
@@ -149,9 +139,7 @@ async fn handler(State(state): State<AppState>, req: AxumRequest) -> impl IntoRe
                 let action_name = route.value.as_str().unwrap_or("");
 
                 if let Some(static_resp) = state.fast_paths.get(action_name) {
-
                     if state.production_mode {
-                        // Benchmark mode → zero overhead
                         return static_resp.to_axum_response();
                     }
 
@@ -177,20 +165,14 @@ async fn handler(State(state): State<AppState>, req: AxumRequest) -> impl IntoRe
 
                     return response;
                 }
-
-                // Not static → continue to dynamic execution
             }
 
-            // String reply routes
             _ => {
                 if let Some(s) = route.value.as_str() {
-
                     if state.production_mode {
                         return s.to_string().into_response();
                     }
-
                     let elapsed = start.elapsed();
-
                     if log_enabled {
                         println!(
                             "{} {} {} {}",
@@ -200,21 +182,15 @@ async fn handler(State(state): State<AppState>, req: AxumRequest) -> impl IntoRe
                             gray(&format!("in {:.2?}", elapsed))
                         );
                     }
-
                     return s.to_string().into_response();
                 }
             }
         }
     }
 
-
-    // Phase 2: Dynamic Route Handling (requires body/header parsing)
-    // Only reached for actions that actually need V8 execution.
-
-    let start = Instant::now(); // restart timing for dynamic path
+    let start = Instant::now();
     let log_enabled = !state.production_mode;
 
-    // Query parsing
     let query_pairs: Vec<(String, String)> = req
         .uri()
         .query()
@@ -229,11 +205,7 @@ async fn handler(State(state): State<AppState>, req: AxumRequest) -> impl IntoRe
         .unwrap_or_default();
     let query_map: HashMap<String, String> = query_pairs.into_iter().collect();
 
-    // Headers & Body
     let (mut parts, body) = req.into_parts();
-    let _method_str = parts.method.as_str().to_uppercase();
-    let _path_str = parts.uri.path().to_string();
-    
     let headers_map: HashMap<String, String> = parts
         .headers
         .iter()
@@ -245,13 +217,11 @@ async fn handler(State(state): State<AppState>, req: AxumRequest) -> impl IntoRe
         Err(_) => return (StatusCode::BAD_REQUEST, "Failed to read request body").into_response(),
     };
 
-    // Route resolution
     let mut params: HashMap<String, String> = HashMap::new();
     let mut action_name: Option<String> = None;
     let mut route_kind = "none";
     let mut route_label = String::from("not_found");
 
-    // Exact route lookup (may find action routes not caught in fast-path phase)
     let route = state
         .routes
         .get(&strict_key)
@@ -262,33 +232,9 @@ async fn handler(State(state): State<AppState>, req: AxumRequest) -> impl IntoRe
             let name = route.value.as_str().unwrap_or("unknown").to_string();
             route_label = name.clone();
             action_name = Some(name);
-        } else if route.r#type == "json" {
-            // This path shouldn't be reached (handled in Phase 1), but keep as safety
-            if log_enabled {
-                println!(
-                    "{} {} {} {}",
-                    blue("[Titan]"),
-                    white(&format!("{} {}", method, path)),
-                    white("→ json"),
-                    gray(&format!("in {:.2?}", start.elapsed()))
-                );
-            }
-            return Json(route.value.clone()).into_response();
-        } else if let Some(s) = route.value.as_str() {
-            if log_enabled {
-                println!(
-                    "{} {} {} {}",
-                    blue("[Titan]"),
-                    white(&format!("{} {}", method, path)),
-                    white("→ reply"),
-                    gray(&format!("in {:.2?}", start.elapsed()))
-                );
-            }
-            return s.to_string().into_response();
         }
     }
 
-    // Dynamic route matching
     if action_name.is_none() {
         if let Some((action, p)) =
             match_dynamic_route(&method, &path, state.dynamic_routes.as_slice())
@@ -298,7 +244,6 @@ async fn handler(State(state): State<AppState>, req: AxumRequest) -> impl IntoRe
             action_name = Some(action);
             params = p;
         } else {
-            // Try matching as a WebSocket route
             if let Some((action, p)) =
                 match_dynamic_route("WS", &path, state.dynamic_routes.as_slice())
             {
@@ -339,7 +284,6 @@ async fn handler(State(state): State<AppState>, req: AxumRequest) -> impl IntoRe
         }
     };
 
-    // Phase 2.5: Fast-path — bypass V8 for statically-detected actions
     if let Some(static_resp) = state.fast_paths.get(&action_name) {
         if log_enabled {
             println!(
@@ -352,8 +296,6 @@ async fn handler(State(state): State<AppState>, req: AxumRequest) -> impl IntoRe
         }
         return static_resp.to_axum_response();
     }
-
-    // Phase 3: V8 Execution (dispatch to worker pool)
 
     let headers_vec: SmallVec<[(String, String); 8]> = headers_map.into_iter().collect();
     let params_vec: SmallVec<[(String, String); 4]> = params.into_iter().collect();
@@ -379,14 +321,6 @@ async fn handler(State(state): State<AppState>, req: AxumRequest) -> impl IntoRe
         .await
         .unwrap_or_else(|e| (serde_json::json!({"error": e}), vec![]));
 
-    // Phase 4: Response Construction
-
-    // NOTE: We intentionally do NOT inject _titanTimings into the JSON body.
-    // This was corrupting benchmark responses (e.g., adding extra fields to
-    // {"message":"Hello, World!"} which fails TechEmpower validation).
-    // Timing info is available via the Server-Timing HTTP header instead.
-
-    // Error handling
     if let Some(err) = result_json.get("error") {
         if log_enabled {
             let prefix = if !timings.is_empty() {
@@ -401,24 +335,13 @@ async fn handler(State(state): State<AppState>, req: AxumRequest) -> impl IntoRe
                 red("→ error"),
                 gray(&format!("in {:.2?}", start.elapsed()))
             );
-            println!(
-                "{} {} {}",
-                prefix,
-                red("Action Error:"),
-                red(err.as_str().unwrap_or("Unknown"))
-            );
         }
-        let response = (StatusCode::INTERNAL_SERVER_ERROR, Json(result_json)).into_response();
-        return response;
+        return (StatusCode::INTERNAL_SERVER_ERROR, Json(result_json)).into_response();
     }
 
-    // Response object construction
     let mut response = if let Some(is_resp) = result_json.get("_isResponse") {
         if is_resp.as_bool().unwrap_or(false) {
-            let status_u16 = result_json
-                .get("status")
-                .and_then(|v| v.as_u64())
-                .unwrap_or(200) as u16;
+            let status_u16 = result_json.get("status").and_then(|v| v.as_u64()).unwrap_or(200) as u16;
             let status = StatusCode::from_u16(status_u16).unwrap_or(StatusCode::OK);
             let mut builder = axum::http::Response::builder().status(status);
 
@@ -434,19 +357,13 @@ async fn handler(State(state): State<AppState>, req: AxumRequest) -> impl IntoRe
             if let Some(location) = result_json.get("redirect") {
                 if let Some(url) = location.as_str() {
                     let mut final_status_u16 = status.as_u16();
-                    if !(300..400).contains(&final_status_u16) {
-                        final_status_u16 = 302;
-                    }
-                    builder = builder
-                        .status(StatusCode::from_u16(final_status_u16).unwrap_or(StatusCode::FOUND))
-                        .header("Location", url);
+                    if !(300..400).contains(&final_status_u16) { final_status_u16 = 302; }
+                    builder = builder.status(StatusCode::from_u16(final_status_u16).unwrap_or(StatusCode::FOUND)).header("Location", url);
                     is_redirect = true;
                 }
             }
 
-            let body_text = if is_redirect {
-                "".to_string()
-            } else {
+            let body_text = if is_redirect { "".to_string() } else {
                 match result_json.get("body") {
                     Some(Value::String(s)) => s.clone(),
                     Some(v) => v.to_string(),
@@ -461,62 +378,23 @@ async fn handler(State(state): State<AppState>, req: AxumRequest) -> impl IntoRe
         Json(result_json).into_response()
     };
 
-    // Server-Timing header (only outside benchmark mode)
     if !state.production_mode && !timings.is_empty() {
-        let server_timing = timings
-            .iter()
-            .enumerate()
-            .map(|(i, (name, duration))| format!("{}_{};dur={:.2}", name, i, duration))
-            .collect::<Vec<_>>()
-            .join(", ");
-        response
-            .headers_mut()
-            .insert("Server-Timing", server_timing.parse().unwrap_or_else(|_| HeaderValue::from_static("")));
+        let server_timing = timings.iter().enumerate().map(|(i, (name, duration))| format!("{}_{};dur={:.2}", name, i, duration)).collect::<Vec<_>>().join(", ");
+        response.headers_mut().insert("Server-Timing", server_timing.parse().unwrap_or_else(|_| HeaderValue::from_static("")));
     }
 
-    // Logging
     if log_enabled {
         let total_elapsed = start.elapsed();
         let total_elapsed_ms = total_elapsed.as_secs_f64() * 1000.0;
-        let total_drift_ms: f64 = timings
-            .iter()
-            .filter(|(n, _)| n == "drift" || n == "drift_error")
-            .map(|(_, d)| d)
-            .sum();
+        let total_drift_ms: f64 = timings.iter().filter(|(n, _)| n == "drift" || n == "drift_error").map(|(_, d)| d).sum();
         let compute_ms = (total_elapsed_ms - total_drift_ms).max(0.0);
 
-        let prefix = if !timings.is_empty() {
-            format!("{} {}", blue("[Titan"), blue("Drift]"))
-        } else {
-            blue("[Titan]").to_string()
-        };
-        let timing_info = if !timings.is_empty() {
-            gray(&format!(
-                "(active: {:.2}ms, drift: {:.2}ms) in {:.2?}",
-                compute_ms, total_drift_ms, total_elapsed
-            ))
-        } else {
-            gray(&format!("in {:.2?}", total_elapsed))
-        };
+        let prefix = if !timings.is_empty() { format!("{} {}", blue("[Titan"), blue("Drift]")) } else { blue("[Titan]").to_string() };
+        let timing_info = if !timings.is_empty() { gray(&format!("(active: {:.2}ms, drift: {:.2}ms) in {:.2?}", compute_ms, total_drift_ms, total_elapsed)) } else { gray(&format!("in {:.2?}", total_elapsed)) };
 
         match route_kind {
-            "dynamic" => println!(
-                "{} {} {} {} {} {}",
-                prefix,
-                green(&format!("{} {}", method, path)),
-                white("→"),
-                green(&route_label),
-                white("(dynamic)"),
-                timing_info
-            ),
-            "exact" => println!(
-                "{} {} {} {} {}",
-                prefix,
-                white(&format!("{} {}", method, path)),
-                white("→"),
-                yellow(&route_label),
-                timing_info
-            ),
+            "dynamic" => println!("{} {} {} {} {} {}", prefix, green(&format!("{} {}", method, path)), white("→"), green(&route_label), white("(dynamic)"), timing_info),
+            "exact" => println!("{} {} {} {} {}", prefix, white(&format!("{} {}", method, path)), white("→"), yellow(&route_label), timing_info),
             _ => {}
         }
     }
@@ -544,77 +422,50 @@ async fn main() -> Result<()> {
         std::process::exit(1);
     }
 
-    // Configuration
     let production_mode = std::env::var("TITAN_DEV").unwrap_or_default() != "1";
-
     let routes_path = dist_dir.join("routes.json");
     let raw = fs::read_to_string(&routes_path).unwrap_or_else(|_| "{}".to_string());
     let json: Value = serde_json::from_str(&raw).unwrap_or_default();
 
-    let port = std::env::var("PORT")
-        .ok()
-        .and_then(|p| p.parse::<u64>().ok())
-        .or_else(|| json["__config"]["port"].as_u64())
-        .unwrap_or(3000);
-
+    let port = std::env::var("PORT").ok().and_then(|p| p.parse::<u64>().ok()).or_else(|| json["__config"]["port"].as_u64()).unwrap_or(3000);
     let thread_count = json["__config"]["threads"].as_u64();
     let routes_json = json["routes"].clone();
     let map: HashMap<String, RouteVal> = serde_json::from_value(routes_json).unwrap_or_default();
-    let dynamic_routes: Vec<DynamicRoute> =
-        serde_json::from_value(json["__dynamic_routes"].clone()).unwrap_or_default();
+    let dynamic_routes: Vec<DynamicRoute> = serde_json::from_value(json["__dynamic_routes"].clone()).unwrap_or_default();
 
     let project_root = dist_dir.clone();
-
-    // Load extensions
     extensions::load_project_extensions(project_root.clone());
 
-    // Build pre-computed route responses
     let mut precomputed = HashMap::new();
     for (key, route) in &map {
         match route.r#type.as_str() {
-            "json" => {
-                precomputed.insert(key.clone(), PrecomputedRoute::from_json(&route.value));
-            }
-            "text" => {
-                if let Some(s) = route.value.as_str() {
-                    precomputed.insert(key.clone(), PrecomputedRoute::from_text(s));
-                }
-            }
+            "json" => { precomputed.insert(key.clone(), PrecomputedRoute::from_json(&route.value)); }
+            "text" => { if let Some(s) = route.value.as_str() { precomputed.insert(key.clone(), PrecomputedRoute::from_text(s)); } }
             _ => {}
         }
     }
-    if !precomputed.is_empty() {
-        println!(
-            "{} {} reply route(s) pre-computed",
-            blue("[TitanPL]"),
-            precomputed.len()
-        );
-    }
 
-    // Build fast-path registry (scan action files for static patterns)
-    let actions_dir = find_actions_dir(&project_root);
+    let actions_dir = dist_dir.join("actions");
     let fast_paths = FastPathRegistry::build(&actions_dir);
 
-    // Initialize Runtime Manager (V8 Worker Pool)
     let threads = match thread_count {
         Some(t) if t > 0 => t as usize,
-        _ => {
-            let cpus = num_cpus::get();
-            // Optimal for CPU-bound V8 work: 2x cores
-            cpus * 2
-        }
+        _ => num_cpus::get() * 2,
     };
 
     let stack_mb = json["__config"]["stack_mb"].as_u64().unwrap_or(8);
     let stack_size = (stack_mb as usize) * 1024 * 1024;
 
-    let runtime_manager = Arc::new(RuntimeManager::new(
-        project_root.clone(),
-        threads,
-        stack_size,
-    ));
+    let runtime_manager = Arc::new(RuntimeManager::new(project_root.clone(), threads, stack_size));
 
-    // Build AppState
+    // Load Actions into workers
+    let action_files = scan_actions(&project_root);
+    for (name, path) in action_files {
+        if let Ok(code) = fs::read_to_string(&path) {
+            runtime_manager.load_action(name, code);
+        }
+    }
+
     let state = AppState {
         routes: Arc::new(map),
         dynamic_routes: Arc::new(dynamic_routes),
@@ -625,26 +476,16 @@ async fn main() -> Result<()> {
         ws_sockets: Arc::new(DashMap::new()),
     };
 
-    // Initialize Global WS Channels (Must happen BEFORE state is moved into router)
     extensions::WS_CHANNELS.get_or_init(|| state.ws_sockets.clone());
-    // Initialize Global Task Runtime (allows task scheduler to dispatch named actions)
     extensions::TASK_RUNTIME.get_or_init(|| state.runtime.clone());
 
-    // Router
     let app = Router::new()
         .route("/", any(root_route))
         .fallback(any(dynamic_route))
         .with_state(state);
 
     let listener = TcpListener::bind(format!("0.0.0.0:{}", port)).await?;
-
-    println!(
-        "\x1b[38;5;39mTitan server running at:\x1b[0m http://localhost:{}  \x1b[90m(Threads: {}, Stack: {}MB{})\x1b[0m",
-        port,
-        threads,
-        stack_mb,
-        if production_mode { "" } else { ", Dev Mode" }
-    );
+    println!("\x1b[38;5;39mTitan server running at:\x1b[0m http://localhost:{}  \x1b[90m(Threads: {}, Stack: {}MB{})\x1b[0m", port, threads, stack_mb, if production_mode { "" } else { ", Dev Mode" });
 
     axum::serve(listener, app).await?;
     Ok(())
@@ -654,52 +495,31 @@ async fn handle_websocket(socket: WebSocket, id: String, action: String, state: 
     let (tx, mut rx) = mpsc::unbounded_channel();
     state.ws_sockets.insert(id.clone(), tx);
 
-    // Initial "open" event
-    let _ = state.runtime.execute(
-        action.clone(),
-        "WS".to_string(),
-        "/ws".to_string(), // placeholder
-        None,
-        smallvec::smallvec![
-            ("socketId".to_string(), id.clone()),
-            ("event".to_string(), "open".to_string())
-        ],
-        smallvec::smallvec![],
-        smallvec::smallvec![]
-    ).await;
+    let _ = state.runtime.execute(action.clone(), "WS".to_string(), "/ws".to_string(), None, smallvec::smallvec![("socketId".to_string(), id.clone()), ("event".to_string(), "open".to_string())], smallvec::smallvec![], smallvec::smallvec![]).await;
 
     let (mut sender, mut receiver) = socket.split();
-
     let id_clone = id.clone();
     let state_clone = state.clone();
     let action_clone = action.clone();
 
-    // Task for sending messages out to the client
     let mut send_task = tokio::spawn(async move {
         while let Some(msg) = rx.recv().await {
-            if sender.send(msg).await.is_err() {
-                break;
-            }
+            let axum_msg = match msg {
+                WsMessage::Text(t) => Message::Text(t.into()),
+                WsMessage::Binary(b) => Message::Binary(b.into()),
+                WsMessage::Ping(p) => Message::Ping(p.into()),
+                WsMessage::Pong(p) => Message::Pong(p.into()),
+                WsMessage::Close(_) => Message::Close(None),
+            };
+            if sender.send(axum_msg).await.is_err() { break; }
         }
     });
 
-    // Task for receiving messages from the client and passing to V8
     let mut recv_task = tokio::spawn(async move {
         while let Some(Ok(msg)) = receiver.next().await {
             match msg {
                 Message::Text(t) => {
-                    let _ = state_clone.runtime.execute(
-                        action_clone.clone(),
-                        "WS".to_string(),
-                        "/ws".to_string(),
-                        Some(bytes::Bytes::from(t)),
-                        smallvec::smallvec![
-                            ("socketId".to_string(), id_clone.clone()),
-                            ("event".to_string(), "message".to_string())
-                        ],
-                        smallvec::smallvec![],
-                        smallvec::smallvec![]
-                    ).await;
+                    let _ = state_clone.runtime.execute(action_clone.clone(), "WS".to_string(), "/ws".to_string(), Some(bytes::Bytes::from(t.as_str().to_string())), smallvec::smallvec![("socketId".to_string(), id_clone.clone()), ("event".to_string(), "message".to_string())], smallvec::smallvec![], smallvec::smallvec![]).await;
                 }
                 Message::Close(_) => break,
                 _ => {}
@@ -707,30 +527,7 @@ async fn handle_websocket(socket: WebSocket, id: String, action: String, state: 
         }
     });
 
-    // Wait for either task to end
-    tokio::select! {
-        _ = (&mut send_task) => recv_task.abort(),
-        _ = (&mut recv_task) => send_task.abort(),
-    };
-
-    // Cleanup
+    tokio::select! { _ = (&mut send_task) => recv_task.abort(), _ = (&mut recv_task) => send_task.abort(), };
     state.ws_sockets.remove(&id);
-    let _ = state.runtime.execute(
-        action,
-        "WS".to_string(),
-        "/ws".to_string(),
-        None,
-        smallvec::smallvec![
-            ("socketId".to_string(), id),
-            ("event".to_string(), "close".to_string())
-        ],
-        smallvec::smallvec![],
-        smallvec::smallvec![]
-    ).await;
+    let _ = state.runtime.execute(action, "WS".to_string(), "/ws".to_string(), None, smallvec::smallvec![("socketId".to_string(), id), ("event".to_string(), "close".to_string())], smallvec::smallvec![], smallvec::smallvec![]).await;
 }
-
-
-fn find_actions_dir(dist_dir: &PathBuf) -> PathBuf {
-    dist_dir.join("actions")
-}
-

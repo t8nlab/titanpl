@@ -152,35 +152,35 @@ pub fn match_dynamic_route(
     None
 }
 
-/// Scan the resolved actions directory and return a map of action names to file paths.
 pub fn scan_actions(root: &PathBuf) -> HashMap<String, PathBuf> {
     let mut map = HashMap::new();
     
-    // Locate actions dir - Priority: project root relative paths
     let dir = match find_actions_dir(root) {
         Some(d) => d,
         None => {
             let ad = resolve_actions_dir();
-            if ad.exists() { ad } else { return map; }
+            if ad.exists() { ad } else { root.clone() }
         }
     };
 
-    // Scanning actions
-    if let Ok(entries) = std::fs::read_dir(dir) {
-        for entry in entries.flatten() {
+    if dir.exists() {
+        for entry in walkdir::WalkDir::new(&dir).into_iter().flatten() {
             let path = entry.path();
             if !path.is_file() { continue; }
             
             let ext = path.extension().and_then(|s| s.to_str()).unwrap_or("");
-            if ext != "js" && ext != "jsbundle" {
-                continue;
+            if ext != "js" && ext != "jsbundle" { continue; }
+            
+            // Generate action name from relative path
+            if let Ok(rel) = path.strip_prefix(&dir) {
+                let name = rel.with_extension("")
+                    .to_string_lossy()
+                    .replace('\\', "/");
+                
+                if !name.is_empty() {
+                    map.insert(name, path.to_path_buf());
+                }
             }
-            
-            let file_stem = path.file_stem().and_then(|s| s.to_str()).unwrap_or("");
-            if file_stem.is_empty() { continue; }
-            
-            // Found action
-            map.insert(file_stem.to_string(), path);
         }
     }
     
