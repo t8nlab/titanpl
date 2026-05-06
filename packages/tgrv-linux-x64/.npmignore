@@ -1,0 +1,14 @@
+node_modules/
+tests/
+test/
+e2e/
+coverage/
+.github/
+.vscode/
+tsconfig.tsbuildinfo
+.env
+.npmrc
+*.log
+mkctx.config.json
+.DS_Store
+*.tgz

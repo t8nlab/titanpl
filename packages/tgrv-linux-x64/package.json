@@ -1,0 +1,10 @@
+{
+  "name": "@tgrv/linux-x64",
+  "version": "1.0.0",
+  "os": [
+    "linux"
+  ],
+  "cpu": [
+    "x64"
+  ]
+}

@@ -71,10 +71,12 @@
     "test:e2e": "vitest run --config vitest.config.e2e.ts",
     "test:e2e:watch": "vitest --config vitest.config.e2e.ts",
     "test:e2e:ui": "vitest --ui --config vitest.config.e2e.ts",
-    "test:all": "vitest run && vitest run --config vitest.config.e2e.ts"
+    "test:all": "vitest run && vitest run --config vitest.config.e2e.ts",
+    "tgrv": "tgrv.exe",
+    "tgrv:build": "cd gravity && cargo build --release && copy target\\release\\tgrv.exe ..\\tgrv.exe"
   },
   "dependencies": {
-    "@titanpl/core": "7.0.0",
+    "@titanpl/core": "^4.0.0",
     "@titanpl/node": "latest",
     "chokidar": "^5.0.0",
     "esbuild": "^0.27.2",

@@ -1,5 +1,41 @@
 # Changelog - Titan Planet ⏣
 
+## [7.0.5-beta (Windows) / 7.0.7-beta (Linux)] - 2026-05-06
+
+### 🚀 Runtime Stabilization & Native Bridge
+
+This release focuses on hardening the Gravity runtime (`tgrv`) and the TitanPL Engine to ensure transparent execution of complex projects, bundled actions, and native extensions.
+
+### ✨ Highlights
+
+#### **Robust Action Loading**
+* **Hyphen Support**: Fixed a critical `ReferenceError` when executing actions with hyphens in their filenames (e.g., `task-worker.js`). The runtime now safely handles non-standard identifiers during action resolution.
+* **Bundle Compatibility**: Improved support for `__titan_exports`, allowing Gravity to correctly resolve exported functions from complex bundled JavaScript files.
+* **Pure JS Runtime**: Finalized the transition of `tgrv` into a standalone JavaScript runtime that can execute direct scripts with full access to Titan's native APIs.
+
+#### **Native extension Bridge**
+* **`native-host` Command**: Both `tgrv` and `titan` now include an internal `native-host` command. This enables the V8 runtime to spawn and communicate with native extensions (DLLs/SOs) via an out-of-process bridge, preventing crashes and dependency conflicts.
+* **Global Injection**: Standardized the injection of the `t` object and its extensions (`t.fs`, `t.task`, etc.) across all worker isolates, including background task workers.
+
+#### **Recursive Action Discovery**
+* **Nested Actions**: The TitanPL Engine now scans the `actions/` directory recursively.
+* **Relative Path Naming**: Actions are now mapped using their relative paths (e.g., `actions/v1/user.js` becomes `v1/user`), allowing for much cleaner project organization and avoiding name collisions in large applications.
+
+#### **Developer Experience & Tooling**
+* **Advanced IntelliSense**: `tgrv init` now scaffolds a `jsconfig.json` with pre-configured path mappings for `@titanpl/native` and `@titanpl/route`.
+* **Type Discovery**: Automatically includes `.ext/` and `node_modules/` extension types in the project scope for instant IDE feedback.
+
+#### **Package Infrastructure**
+* **Modular Distribution**: Established a new NPM distribution model for `tgrv`.
+* **Platform-Specific Packages**: Binaries are now partitioned into `@tgrv/win32-x64` and `@tgrv/linux-x64`, ensuring smaller install sizes and better cross-platform reliability.
+
+### 🔧 Fixed
+* **`ReferenceError: <part> is not defined`**: Resolved issues where hyphenated filenames were incorrectly parsed as subtraction operations in the JS wrapper.
+* **Native Host Arguments**: Fixed a bug where the CLI would incorrectly parse DLL paths as CLI arguments.
+* **Recursive Scan Collisions**: Fixed a logic error in `scan_actions` that caused flat naming collisions for nested files.
+
+---
+
 ## [7.0.4] - 2026-05-05
 
 ### 🚀 Managed Background Task System (`t.task`)

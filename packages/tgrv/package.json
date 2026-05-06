@@ -1,0 +1,13 @@
+{
+  "name": "@tgrv/cli",
+  "version": "1.0.1",
+  "description": "Gravity Standalone Runtime CLI",
+  "bin": {
+    "tgrv": "index.js"
+  },
+  "type": "module",
+  "optionalDependencies": {
+    "@tgrv/win32-x64": "1.0.0",
+    "@tgrv/linux-x64": "1.0.0"
+  }
+}
