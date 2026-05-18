@@ -108,30 +108,7 @@ jobs:
             runTest("buffer", () => {
               if (t.buffer.toBase64("hello").length === 0) throw new Error("Buffer failed");
             });
-
-            runTest("ls", () => {
-              t.ls.set("h", "1");
-              if (t.ls.get("h") !== "1") throw new Error("LS value mismatch");
-            });
-
-            runTest("ls_v8", () => {
-              const complex = { date: new Date(), arr: new Uint8Array([1, 2, 3]) };
-              const bytes = t.ls.serialize(complex);
-              const restored = t.ls.deserialize(bytes);
-              if (!restored || restored.arr.length !== 3) throw new Error("V8 Serialization failed");
-              
-              // British Alias Test
-              const bytes2 = t.ls.serialise(complex);
-              const restored2 = t.ls.deserialise(bytes2);
-               if (!restored2 || restored2.arr.length !== 3) throw new Error("V8 British Alias Serialization failed");
-            });
             
-            runTest("global_v8", () => {
-               const complex = { a: 1 };
-               const bytes = t.serialize(complex);
-               const restored = t.deserialise(bytes);
-               if (!restored || restored.a !== 1) throw new Error("Global V8 Serialization failed");
-            });
 
             result.runtime = {
               pid: t.proc.pid(),

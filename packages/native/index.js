@@ -51,3 +51,4 @@ export const deserialize = t.deserialize;
 export const deserialise = t.deserialise;
 
 export const defineAction = (handler) => handler;
+export const defineTask = (handler) => handler;

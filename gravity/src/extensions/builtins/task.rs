@@ -59,6 +59,7 @@ pub struct TaskEntry {
     pub state: TaskState,
     pub started_at: u64,    // Unix ms
     pub duration_ms: Option<f64>,
+    pub delay_ms: Option<u64>, // Cooldown window
 }
 
 /// A single enqueued/spawned job descriptor
@@ -66,12 +67,14 @@ pub struct TaskEntry {
 pub struct TaskJob {
     /// Unique key for this specific job
     pub key: String,
-    /// The named Titan action to dispatch (e.g. "emails/refresh")
+    /// The named Titan action to dispatch
     pub action_name: String,
     /// JSON payload — delivered as req.body in the action
     pub payload: Value,
     /// Timeout in ms (None = 30s default)
     pub timeout_ms: Option<u64>,
+    /// Delay in ms before execution (None = immediate)
+    pub delay_ms: Option<u64>,
     pub enqueued_at: u64,
 }
 
@@ -103,28 +106,39 @@ impl TaskRegistry {
             .as_millis() as u64
     }
 
-    /// Register a spawn job. Returns false if deduplicated.
-    pub fn try_register_spawn(&mut self, key: &str) -> bool {
+    /// Register a spawn job. Returns false if deduplicated or cooldown is active.
+    pub fn try_register_spawn(&mut self, key: &str, delay_ms: Option<u64>) -> bool {
         if let Some(entry) = self.entries.get(key) {
             match entry.state {
                 TaskState::Pending | TaskState::Running => return false,
-                _ => {}
+                _ => {
+                    if let Some(cooldown) = entry.delay_ms {
+                        if cooldown > 0 {
+                            let now = Self::now_ms();
+                            if now < entry.started_at + cooldown {
+                                return false; // Cooldown not fulfilled
+                            }
+                        }
+                    }
+                }
             }
         }
         self.entries.insert(key.to_string(), TaskEntry {
             state: TaskState::Pending,
             started_at: Self::now_ms(),
             duration_ms: None,
+            delay_ms,
         });
         true
     }
 
     /// Force-register a spawn (dedupe=false path).
-    pub fn force_register(&mut self, key: &str) {
+    pub fn force_register(&mut self, key: &str, delay_ms: Option<u64>) {
         self.entries.insert(key.to_string(), TaskEntry {
             state: TaskState::Pending,
             started_at: Self::now_ms(),
             duration_ms: None,
+            delay_ms,
         });
     }
 
@@ -151,33 +165,39 @@ impl TaskRegistry {
                 state: TaskState::Running,
                 started_at: Self::now_ms(),
                 duration_ms: None,
+                delay_ms: None,
             });
         }
     }
 
     /// Mark done — keeps entry in registry so status() can return "done"
     pub fn mark_done(&mut self, key: &str, duration_ms: f64) {
-        let entry = self.entries.entry(key.to_string()).or_insert_with(|| TaskEntry {
-            state: TaskState::Done,
-            started_at: Self::now_ms(),
-            duration_ms: None,
-        });
-        entry.state = TaskState::Done;
-        entry.duration_ms = Some(duration_ms);
-        // No removal — entry stays queryable via status()
-        // Cleaned up lazily on next spawn() with the same key
+        if let Some(entry) = self.entries.get_mut(key) {
+            entry.state = TaskState::Done;
+            entry.duration_ms = Some(duration_ms);
+        } else {
+            self.entries.insert(key.to_string(), TaskEntry {
+                state: TaskState::Done,
+                started_at: Self::now_ms(),
+                duration_ms: Some(duration_ms),
+                delay_ms: None,
+            });
+        }
     }
 
     /// Mark failed — keeps entry in registry so status() can return "failed"
     pub fn mark_failed(&mut self, key: &str, reason: String, duration_ms: f64) {
-        let entry = self.entries.entry(key.to_string()).or_insert_with(|| TaskEntry {
-            state: TaskState::Failed(reason.clone()),
-            started_at: Self::now_ms(),
-            duration_ms: None,
-        });
-        entry.state = TaskState::Failed(reason);
-        entry.duration_ms = Some(duration_ms);
-        // No removal — entry stays queryable via status()
+        if let Some(entry) = self.entries.get_mut(key) {
+            entry.state = TaskState::Failed(reason);
+            entry.duration_ms = Some(duration_ms);
+        } else {
+            self.entries.insert(key.to_string(), TaskEntry {
+                state: TaskState::Failed(reason),
+                started_at: Self::now_ms(),
+                duration_ms: Some(duration_ms),
+                delay_ms: None,
+            });
+        }
     }
 
     pub fn stop(&mut self, key: &str) {
@@ -412,7 +432,7 @@ pub fn dispatch_queue_consumer(queue_key: String, tokio_handle: tokio::runtime::
 pub fn native_task_spawn(
     scope: &mut v8::HandleScope,
     mut args: v8::FunctionCallbackArguments,
-    mut _retval: v8::ReturnValue,
+    mut retval: v8::ReturnValue,
 ) {
     use crate::extensions::TitanRuntime;
 
@@ -423,6 +443,7 @@ pub fn native_task_spawn(
     let opts_val = args.get(3);
     let mut timeout_ms: Option<u64> = None;
     let mut dedupe = true;
+    let mut delay_ms: Option<u64> = None;
 
     if opts_val.is_object() {
         if let Some(obj) = opts_val.to_object(scope) {
@@ -438,6 +459,12 @@ pub fn native_task_spawn(
                     dedupe = d_val.boolean_value(scope);
                 }
             }
+            let dl_key = v8_str(scope, "delay");
+            if let Some(dl_val) = obj.get(scope, dl_key.into()) {
+                if dl_val.is_number() {
+                    delay_ms = dl_val.number_value(scope).map(|n| n as u64);
+                }
+            }
         }
     }
 
@@ -445,17 +472,62 @@ pub fn native_task_spawn(
     let runtime = unsafe { &mut *runtime_ptr };
     let tokio_handle = runtime.tokio_handle.clone();
 
+    let mut spawned = true;
+    let mut cooldown_active = false;
+    let mut remaining_ms = 0u64;
+
     {
         let registry = get_task_registry();
         let mut reg = registry.lock().unwrap();
         if dedupe {
-            if !reg.try_register_spawn(&key) {
-                // Deduplicated — silently skip
-                return;
+            if let Some(entry) = reg.entries.get(&key) {
+                match entry.state {
+                    TaskState::Pending | TaskState::Running => {
+                        spawned = false;
+                    }
+                    _ => {
+                        if let Some(cooldown) = entry.delay_ms {
+                            if cooldown > 0 {
+                                let now = TaskRegistry::now_ms();
+                                if now < entry.started_at + cooldown {
+                                    spawned = false;
+                                    cooldown_active = true;
+                                    remaining_ms = (entry.started_at + cooldown) - now;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            if spawned {
+                reg.try_register_spawn(&key, delay_ms);
             }
         } else {
-            reg.force_register(&key);
+            reg.force_register(&key, delay_ms);
         }
+    }
+
+    if !spawned {
+        if is_dev() {
+            if cooldown_active {
+                println!(
+                    "{} {} {}",
+                    blue("[Titan Task]"),
+                    yellow(&format!("spawn:{}", key)),
+                    gray(&format!("→ rejected (cooldown active: {}ms remaining)", remaining_ms))
+                );
+            } else {
+                println!(
+                    "{} {} {}",
+                    blue("[Titan Task]"),
+                    yellow(&format!("spawn:{}", key)),
+                    gray("→ rejected (already pending/running)")
+                );
+            }
+        }
+        retval.set(v8::Boolean::new(scope, false).into());
+        return;
     }
 
     let job = TaskJob {
@@ -463,19 +535,25 @@ pub fn native_task_spawn(
         action_name: action_name.clone(),
         payload,
         timeout_ms,
+        delay_ms,
         enqueued_at: TaskRegistry::now_ms(),
     };
 
     if is_dev() {
+        let suffix = match delay_ms {
+            Some(d) if d > 0 => format!(" (cooldown: {}ms)", d),
+            _ => "".to_string(),
+        };
         println!(
             "{} {} {}",
             blue("[Titan Task]"),
             yellow(&format!("spawn:{}", key)),
-            gray(&format!("→ {} queued", action_name))
+            gray(&format!("→ {} queued{}", action_name, suffix))
         );
     }
 
     dispatch_spawn(job, tokio_handle);
+    retval.set(v8::Boolean::new(scope, true).into());
 }
 
 /// t.task._native_enqueue(queueKey, jobKey, actionName, payloadJson, optionsJson)
@@ -516,6 +594,7 @@ pub fn native_task_enqueue(
         action_name: action_name.clone(),
         payload,
         timeout_ms,
+        delay_ms: None,
         enqueued_at: TaskRegistry::now_ms(),
     };
 
@@ -619,6 +698,15 @@ pub fn native_task_status(
                 let dur_key = v8_str(scope, "duration");
                 let dur_val = v8::Number::new(scope, dur);
                 obj.set(scope, dur_key.into(), dur_val.into());
+            }
+
+            if let Some(delay) = entry.delay_ms {
+                let elapsed = TaskRegistry::now_ms().saturating_sub(entry.started_at);
+                if elapsed < delay {
+                    let dr_key = v8_str(scope, "delayRemaining");
+                    let dr_val = v8::Number::new(scope, (delay - elapsed) as f64);
+                    obj.set(scope, dr_key.into(), dr_val.into());
+                }
             }
 
             if let TaskState::Failed(ref reason) = entry.state {

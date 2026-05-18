@@ -8,7 +8,7 @@ if (!globalThis.__TITAN_CORE_LOADED__) {
     // ensure t exists early
     if (!globalThis.t) globalThis.t = {};
 
-    // defineAction identity helper
+    // defineAction / defineTask identity helper
     globalThis.defineAction = (fn) => {
         if (fn.__titanWrapped) return fn;
 
@@ -75,6 +75,7 @@ if (!globalThis.__TITAN_CORE_LOADED__) {
         wrapped.__titanWrapped = true;
         return wrapped;
     };
+    globalThis.defineTask = globalThis.defineAction;
 
 
     // TextDecoder Polyfill
@@ -305,7 +306,7 @@ if (!globalThis.__TITAN_CORE_LOADED__) {
              * @param {{ dedupe?: boolean, timeout?: number }} [options]
              */
             spawn(key, actionName, payload = null, options = {}) {
-                _native._native_spawn(key, actionName, payload, options);
+                return _native._native_spawn(key, actionName, payload, options);
             },
 
             /**

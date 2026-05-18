@@ -181,9 +181,20 @@ export interface TitanRequest {
  *
  * @see https://titanpl.vercel.app/docs/how-to-use/02-actions — Action definition patterns
  */
+export interface TitanTaskRequest {
+    /** The JSON payload passed to the task. */
+    body: any;
+    /** Unique task key identifier. */
+    key: string;
+}
+
 export function defineAction<T>(
     handler: (req: TitanRequest) => T
 ): (req: TitanRequest) => T;
+
+export function defineTask<T>(
+    handler: (req: TitanTaskRequest) => T
+): (req: TitanTaskRequest) => T;
 
 /**
  * Built-in Rust-powered HTTP client.
@@ -868,7 +879,9 @@ declare global {
                 dedupe?: boolean;
                 /** Kill task after these many milliseconds. Default: 30000. */
                 timeout?: number;
-            }): void;
+                /** Delay in milliseconds before the task execution starts. */
+                delay?: number;
+            }): boolean;
 
             /**
              * Enqueues a job in a FIFO sequential queue.
@@ -907,6 +920,7 @@ declare global {
                 startedAt: number;
                 duration?: number;
                 error?: string;
+                delayRemaining?: number;
             } | null;
 
             /**

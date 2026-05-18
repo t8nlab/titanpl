@@ -42,7 +42,7 @@ pub fn native_db_connect(scope: &mut v8::HandleScope, args: v8::FunctionCallback
         let cfg: Config = match conn_string.parse() {
             Ok(c) => c,
             Err(e) => {
-                println!("{} {} parse error: {}", crate::utils::blue("[Titan]"), crate::utils::red("DB:"), e);
+                println!("{} {} parse error: {}", crate::utils::blue("[Titan DB]"), crate::utils::red("DB:"), e);
                 let msg = format!("t.db.connect(): Invalid connection string: {}", e);
                 let message = v8::String::new(scope, &msg).unwrap_or_else(|| v8::String::new(scope, "Error").unwrap());
                 let exception = v8::Exception::error(scope, message);

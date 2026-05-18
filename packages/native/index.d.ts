@@ -18,7 +18,15 @@ export interface FileSystem {
 
 export const fs: FileSystem;
 export function log(message: any): void;
+export interface TaskRequest {
+    /** The JSON payload passed to the task. */
+    body: any;
+    /** Unique task key identifier. */
+    key: string;
+}
+
 export function defineAction<T = any>(handler: (req: Request) => T | Promise<T>): (req: Request) => T | Promise<T>;
+export function defineTask<T = any>(handler: (req: TaskRequest) => T | Promise<T>): (req: TaskRequest) => T | Promise<T>;
 export function fetch(url: string, options?: any): any;
 export function drift<T>(op: any): T;
 
@@ -129,6 +137,8 @@ export interface TaskStatus {
     duration?: number;
     /** The error message if the task failed. */
     error?: string;
+    /** Remaining cooldown rate-limit duration in milliseconds before this task key can be spawned again. */
+    delayRemaining?: number;
 }
 
 export interface TaskOptions {
@@ -136,6 +146,8 @@ export interface TaskOptions {
     dedupe?: boolean;
     /** Timeout in milliseconds for the task execution. Defaults to 30000 (30s). */
     timeout?: number;
+    /** Cooldown duration in milliseconds after spawning during which subsequent spawn requests for the same key will be ignored. */
+    delay?: number;
 }
 
 export interface TaskModule {
@@ -152,7 +164,7 @@ export interface TaskModule {
      * task.spawn(`cleanup:${userId}`, "user/cleanup", { userId });
      * ```
      */
-    spawn(key: string, actionName: string, payload?: any, options?: TaskOptions): void;
+    spawn(key: string, actionName: string, payload?: any, options?: TaskOptions): boolean;
 
     /**
      * Enqueues a job in a FIFO queue. Jobs with the same queueKey run sequentially.

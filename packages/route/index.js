@@ -14,20 +14,21 @@ function addRoute(method, route) {
         },
 
         action(name) {
+            const cleanName = name.replace(/\.[jt]s$/, '').replace(/\\/g, '/');
             if (route.includes(":")) {
                 if (!dynamicRoutes[method]) dynamicRoutes[method] = [];
                 dynamicRoutes[method].push({
                     method: method.toUpperCase(),
                     pattern: route,
-                    action: name
+                    action: cleanName
                 });
-                actionMap[key] = name;
+                actionMap[key] = cleanName;
             } else {
                 routes[key] = {
                     type: "action",
-                    value: name
+                    value: cleanName
                 };
-                actionMap[key] = name;
+                actionMap[key] = cleanName;
             }
         }
     };
@@ -47,20 +48,21 @@ const t = {
     ws(route) {
         return {
             action(name) {
+                const cleanName = name.replace(/\.[jt]s$/, '').replace(/\\/g, '/');
                 if (route.includes(":")) {
                     if (!dynamicRoutes["WS"]) dynamicRoutes["WS"] = [];
                     dynamicRoutes["WS"].push({
                         method: "WS",
                         pattern: route,
-                        action: name
+                        action: cleanName
                     });
-                    actionMap[`WS:${route}`] = name;
+                    actionMap[`WS:${route}`] = cleanName;
                 } else {
                     routes[`WS:${route}`] = {
                         type: "websocket",
-                        value: name
+                        value: cleanName
                     };
-                    actionMap[`WS:${route}`] = name;
+                    actionMap[`WS:${route}`] = cleanName;
                 }
             }
         };

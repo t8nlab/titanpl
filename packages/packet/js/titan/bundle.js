@@ -159,6 +159,22 @@ export async function bundleFile(options) {
   }
 }
 
+function getFilesRecursively(dir, baseDir = dir) {
+  let results = [];
+  if (!fs.existsSync(dir)) return results;
+  const list = fs.readdirSync(dir);
+  for (const file of list) {
+    const filePath = path.join(dir, file);
+    const stat = fs.statSync(filePath);
+    if (stat && stat.isDirectory()) {
+      results = results.concat(getFilesRecursively(filePath, baseDir));
+    } else {
+      results.push(path.relative(baseDir, filePath));
+    }
+  }
+  return results;
+}
+
 /**
  * Main JS Bundler
  */
@@ -175,12 +191,14 @@ export async function bundle(options = {}) {
 
   if (!fs.existsSync(actionsDir)) return;
 
-  const files = fs.readdirSync(actionsDir).filter(f => f.endsWith('.js'));
+  const files = getFilesRecursively(actionsDir).filter(f => f.endsWith('.js'));
 
   for (const file of files) {
-    const actionName = path.basename(file, path.extname(file));
+    const relativeNoExt = file.replace(/\.js$/, '');
+    const actionName = relativeNoExt.replace(/\\/g, '/');
+    const exportedName = path.basename(file, path.extname(file));
     const entryPoint = path.join(actionsDir, file);
-    const outfile = path.join(bundleDir, actionName + ".jsbundle");
+    const outfile = path.join(bundleDir, relativeNoExt + ".jsbundle");
 
     try {
       await bundleFile({
@@ -190,7 +208,7 @@ export async function bundle(options = {}) {
         footer: {
           js: `
 (function () {
-  const fn = __titan_exports["${actionName}"] || __titan_exports.default;
+  const fn = __titan_exports["${exportedName}"] || __titan_exports.default;
   if (typeof fn !== "function") throw new Error("[TitanPL] Action '${actionName}' not found or not a function");
   globalThis["${actionName}"] = globalThis.defineAction(fn);
 })();`
