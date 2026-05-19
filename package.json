@@ -73,7 +73,8 @@
     "test:e2e:ui": "vitest --ui --config vitest.config.e2e.ts",
     "test:all": "vitest run && vitest run --config vitest.config.e2e.ts",
     "tgrv": "tgrv.exe",
-    "tgrv:build": "cd gravity && cargo build --release && copy target\\release\\tgrv.exe ..\\tgrv.exe"
+    "tgrv:build": "cd gravity && cargo build --release && copy target\\release\\tgrv.exe ..\\tgrv.exe",
+    "cli:test": "node packages/cli/index.js"
   },
   "dependencies": {
     "@titanpl/core": "^4.0.0",

@@ -1,17 +1,13 @@
-import { registerExtension } from './utils/registerExtension.js';
+import { ext } from "./ext.js";
 
-const myExt = {
-    /**
-     * A sample function that can be called from any Titan Action.
-     */
-    hello: () => {
-        t.log("{{name}}", "Hello from extension!");
-        return "hello";
-    }
-};
-
-// If this is a Wasm or Native extension, bindings will be injected here during build.
-// Use 'titan build ext' to generate them.
-
-registerExtension("{{name}}", myExt);
-export default myExt;
+export default class Extension {
+  /**
+   * Adds two numbers using the native Rust implementation.
+   * @param {number} n1
+   * @param {number} n2
+   * @returns {Promise<number>}
+   */
+  addNumber(n1, n2) {
+    return ext.call("add_number", { n1, n2 });
+  }
+}

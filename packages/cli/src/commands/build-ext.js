@@ -1,6 +1,6 @@
 import fs from 'fs';
 import path from 'path';
-import { execSync } from 'child_process';
+import { execSync, spawn } from 'child_process';
 import chalk from 'chalk';
 
 export async function buildExtensionCommand() {
@@ -23,7 +23,11 @@ export async function buildExtensionCommand() {
     if (type === 'wasm') {
         await buildWasmExtension(titanJson);
     } else if (type === 'native') {
-        await buildNativeExtension(titanJson);
+        if (fs.existsSync(path.join(process.cwd(), 'main.go'))) {
+            await buildGoExtension(titanJson);
+        } else {
+            await buildNativeExtension(titanJson);
+        }
     }
 }
 
@@ -46,7 +50,7 @@ async function buildWasmExtension(titanJson) {
             execSync('cargo build --target wasm32-unknown-unknown --release', { cwd: nativeDir, stdio: 'ignore' });
             const pkgDir = path.join(nativeDir, 'pkg');
             if (!fs.existsSync(pkgDir)) fs.mkdirSync(pkgDir);
-            
+
             const targetWasm = path.join(nativeDir, `target/wasm32-unknown-unknown/release/${crateName}.wasm`);
             const destWasm = path.join(pkgDir, `${crateName}_bg.wasm`);
             fs.copyFileSync(targetWasm, destWasm);
@@ -60,7 +64,7 @@ async function buildWasmExtension(titanJson) {
     console.log(chalk.gray("  Generating bindings..."));
     const libRsPath = path.join(nativeDir, 'src/lib.rs');
     const libRs = fs.readFileSync(libRsPath, 'utf8');
-    
+
     const exports = [];
     const exportRegex = /#\[titan::export\]\s+pub\s+fn\s+(\w+)\s*\(([^)]*)\)\s*(?:->\s*([^\{]+))?/g;
     let match;
@@ -75,7 +79,7 @@ async function buildWasmExtension(titanJson) {
 import * as wasm from './my_ext_bg.wasm';
 export const { ${exports.map(e => e.name).join(', ')} } = wasm;
 `;
-    
+
     const pkgDir = path.join(nativeDir, 'pkg');
     fs.writeFileSync(path.join(pkgDir, 'bindings.js'), bindingsJs);
 
@@ -101,70 +105,248 @@ registerExtension("${titanJson.name.split('/').pop()}", myExt);
 
 async function buildNativeExtension(titanJson) {
     const nativeDir = path.join(process.cwd(), 'native');
+
+    // ---------------------------------------------------
+    // Validate native directory
+    // ---------------------------------------------------
     if (!fs.existsSync(nativeDir)) {
-        console.log(chalk.red("✖ native/ directory not found."));
+        console.log(
+            chalk.red("✖ native/ directory not found.")
+        );
         return;
     }
 
-    console.log(chalk.gray("  Compiling Rust native library..."));
-    try {
-        execSync('cargo build --release', { cwd: nativeDir, stdio: 'ignore' });
-    } catch (err) {
-        console.log(chalk.red("✖ Native compilation failed."));
-        return;
-    }
-
-    const libName = titanJson.name.split('/').pop().replace(/-/g, '_');
+    // ---------------------------------------------------
+    // Resolve target binary path from titan.json
+    // ---------------------------------------------------
     const isWindows = process.platform === 'win32';
     const isMac = process.platform === 'darwin';
-    
-    let binName = `lib${libName}.so`;
-    if (isWindows) binName = `${libName}.dll`;
-    if (isMac) binName = `lib${libName}.dylib`;
 
-    const buildDir = path.join(nativeDir, 'build');
-    if (!fs.existsSync(buildDir)) fs.mkdirSync(buildDir);
+    let configuredPath;
 
-    const targetDir = path.join(nativeDir, 'target/release');
-    const srcPath = path.join(targetDir, binName);
-    const destPath = path.join(buildDir, binName);
-
-    if (fs.existsSync(srcPath)) {
-        fs.copyFileSync(srcPath, destPath);
+    if (isWindows) {
+        configuredPath = titanJson.native?.windows;
+    } else if (isMac) {
+        configuredPath = titanJson.native?.macos;
+    } else {
+        configuredPath = titanJson.native?.linux;
     }
 
-    // Parse exports for index.js
-    const libRsPath = path.join(nativeDir, 'src/lib.rs');
-    const libRs = fs.readFileSync(libRsPath, 'utf8');
+    if (!configuredPath) {
+        console.log(
+            chalk.red(
+                "✖ Missing native binary path in titan.json"
+            )
+        );
+        return;
+    }
+
+    const binName = path.basename(configuredPath);
+
+    // ---------------------------------------------------
+    // Build destination directory
+    // ---------------------------------------------------
+    const buildDir = path.dirname(
+        path.join(process.cwd(), configuredPath)
+    );
+
+    if (!fs.existsSync(buildDir)) {
+        fs.mkdirSync(buildDir, {
+            recursive: true
+        });
+    }
+
+    // ---------------------------------------------------
+    // Start cargo build
+    // ---------------------------------------------------
+    console.log(
+        chalk.cyan(`\n⏣ Forging Rust native extension...\n`)
+    );
+
+    try {
+        await new Promise((resolve, reject) => {
+            const build = spawn(
+                'cargo',
+                ['build', '--release'],
+                {
+                    cwd: nativeDir,
+                    stdio: 'inherit'
+                }
+            );
+
+            build.on('close', (code) => {
+                if (code === 0) {
+                    resolve();
+                } else {
+                    reject(
+                        new Error(
+                            `cargo exited with code ${code}`
+                        )
+                    );
+                }
+            });
+
+            build.on('error', reject);
+        });
+    } catch (err) {
+        console.log(
+            chalk.red(
+                `✖ Native compilation failed: ${err.message}`
+            )
+        );
+        return;
+    }
+
+    // ---------------------------------------------------
+    // Locate built binary
+    // ---------------------------------------------------
+    const targetDir = path.join(
+        nativeDir,
+        'target',
+        'release'
+    );
+
+    const srcPath = path.join(
+        targetDir,
+        binName
+    );
+
+    const destPath = path.join(
+        buildDir,
+        binName
+    );
+
+    if (!fs.existsSync(srcPath)) {
+        console.log(
+            chalk.red(
+                `✖ Compiled binary not found: ${srcPath}`
+            )
+        );
+
+        console.log(
+            chalk.yellow(
+                `! Make sure Cargo.toml [lib] name matches the titan.json binary filename`
+            )
+        );
+
+        return;
+    }
+
+    // ---------------------------------------------------
+    // Copy binary
+    // ---------------------------------------------------
+    fs.copyFileSync(srcPath, destPath);
+
+    console.log(
+        chalk.green(
+            `✔ Native binary copied → ${configuredPath}`
+        )
+    );
+
+    // ---------------------------------------------------
+    // Parse native exports
+    // ---------------------------------------------------
+    const libRsPath = path.join(
+        nativeDir,
+        'src',
+        'lib.rs'
+    );
+
+    if (!fs.existsSync(libRsPath)) {
+        console.log(
+            chalk.red(
+                "✖ native/src/lib.rs not found."
+            )
+        );
+        return;
+    }
+
+    const libRs = fs.readFileSync(
+        libRsPath,
+        'utf8'
+    );
+
     const exports = [];
-    const exportRegex = /#\[titan::native_export\]\s+pub\s+extern\s+"C"\s+fn\s+(\w+)\s*\(([^)]*)\)/g;
+
+    const exportRegex =
+        /#\[titan::native_export\]\s+pub\s+extern\s+"C"\s+fn\s+(\w+)\s*\(([^)]*)\)/g;
+
     let match;
+
     while ((match = exportRegex.exec(libRs)) !== null) {
         const name = match[1];
+
         const paramsRaw = match[2];
-        const params = paramsRaw.split(',').map(p => p.trim().split(':')[0].trim()).filter(p => p);
-        exports.push({ name, params });
+
+        const params = paramsRaw
+            .split(',')
+            .map(p =>
+                p.trim()
+                 .split(':')[0]
+                 .trim()
+            )
+            .filter(Boolean);
+
+        exports.push({
+            name,
+            params
+        });
     }
 
-    // Update index.js
-    const indexJs = `import { registerExtension } from './utils/registerExtension.js';
+    // ---------------------------------------------------
+    // Complete
+    // ---------------------------------------------------
+    console.log(
+        chalk.green(
+            `\n✔ Native extension build complete.\n`
+        )
+    );
+}
 
-// native bindings are injected by Gravity's NativeHost IPC bridge
-const myExt = {
-    ${exports.map(e => `${e.name}: (${e.params.join(', ')}) => t.__native.call("${titanJson.name}", "${e.name}", [${e.params.join(', ')}])`).join(',\n    ')}
-};
+async function buildGoExtension(titanJson) {
+    const isWindows = process.platform === 'win32';
 
-registerExtension("${titanJson.name.split('/').pop()}", myExt);
-`;
-    fs.writeFileSync(path.join(process.cwd(), 'index.js'), indexJs);
+    // Retrieve output binary names from titan.json if available
+    const winBin = titanJson.native?.windows || 'go-extension.dll';
+    const linuxBin = titanJson.native?.linux || 'go-extension.so';
 
-    // Update titan.json
-    titanJson.native = {
-        linux: `native/build/lib${libName}.so`,
-        windows: `native/build/${libName}.dll`,
-        macos: `native/build/lib${libName}.dylib`
-    };
-    fs.writeFileSync(path.join(process.cwd(), 'titan.json'), JSON.stringify(titanJson, null, 2));
+    const binaryName = isWindows ? winBin : linuxBin;
 
-    console.log(chalk.green("✔ Native build complete."));
+    console.log(chalk.gray(`  Compiling Go native library to ${binaryName}...`));
+
+    try {
+        const cmd = `go build -buildmode=c-shared -o "${binaryName}" main.go`;
+        console.log(chalk.gray(`  Running: ${cmd}`));
+        console.log(chalk.cyan("→ Starting Go compilation...\n"));
+
+        await new Promise((resolve, reject) => {
+            const build = spawn(
+                'go',
+                [
+                    'build',
+                    '-buildmode=c-shared',
+                    '-o',
+                    binaryName,
+                    'main.go'
+                ],
+                {
+                    cwd: process.cwd(),
+                    stdio: 'inherit',
+                }
+            );
+
+            build.on('close', (code) => {
+                if (code === 0) {
+                    resolve();
+                } else {
+                    reject(new Error(`go build exited with code ${code}`));
+                }
+            });
+
+            build.on('error', reject);
+        });
+        console.log(chalk.green("✔ Go native build complete."));
+    } catch (err) {
+        console.log(chalk.red(`✖ Go compilation failed: ${err.message}`));
+    }
 }

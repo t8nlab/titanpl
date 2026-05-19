@@ -40,7 +40,7 @@ async function createExtension(extensionName) {
         message: 'What type of extension do you want to create?',
         choices: [
             { title: 'js      — JavaScript only, zero build step, always safe', value: 'js' },
-            { title: 'wasm    — Rust compiled to WebAssembly, sandboxed, auto-bound', value: 'wasm' },
+            { title: 'golang  — Go compiled to .so/.dll, best for I/O-driven extensions without drift', value: 'golang' },
             { title: 'native  — Rust compiled to .so/.dll, out-of-process, requires allowNative', value: 'native' },
         ],
         initial: 0
@@ -63,10 +63,20 @@ async function createExtension(extensionName) {
 
     console.log(chalk.cyan(`\n→ Creating ${extType.toUpperCase()} extension '${name}'...\n`));
 
-    if (extType === 'js') {
+    const { execSync } = await import('child_process');
+    if (extType === 'golang') {
+        try {
+            console.log(chalk.gray(`  Cloning Go template from https://github.com/t8nlab/golang-extTemplate...`));
+            execSync(`git clone https://github.com/t8nlab/golang-extTemplate "${targetDir}"`, { stdio: 'pipe' });
+            // Remove git history
+            fs.rmSync(path.join(targetDir, '.git'), { recursive: true, force: true });
+        } catch (err) {
+            console.log(chalk.red(`\n✖ Git clone failed for Go template: ${err.message}`));
+            return;
+        }
+    } else if (extType === 'js') {
         try {
             console.log(chalk.gray(`  Cloning JS template from https://github.com/t8nlab/extTemplate.git...`));
-            const { execSync } = await import('child_process');
             execSync(`git clone https://github.com/t8nlab/extTemplate.git "${targetDir}"`, { stdio: 'pipe' });
             // Remove git history
             fs.rmSync(path.join(targetDir, '.git'), { recursive: true, force: true });
@@ -116,7 +126,7 @@ function transformExtension(target, name, type) {
     if (fs.existsSync(titanPath)) {
         const titan = JSON.parse(fs.readFileSync(titanPath, 'utf8'));
         titan.name = name;
-        titan.type = type;
+        titan.type = type === 'js' ? 'js' : 'native';
         titan.version = "1.0.0";
         fs.writeFileSync(titanPath, JSON.stringify(titan, null, 2));
     }
@@ -138,7 +148,7 @@ function substituteTemplates(dir, name) {
             substituteTemplates(fullPath, name);
         } else {
             const ext = path.extname(file).toLowerCase();
-            const textExts = ['.js', '.ts', '.json', '.md', '.txt', '.rs', '.toml', '.html', '.css', '.d.ts'];
+            const textExts = ['.js', '.ts', '.json', '.md', '.txt', '.rs', '.toml', '.html', '.css', '.d.ts', '.go', '.mod'];
             if (textExts.includes(ext)) {
                 let content = fs.readFileSync(fullPath, 'utf8');
                 let changed = false;
@@ -149,6 +159,19 @@ function substituteTemplates(dir, name) {
                 if (content.includes("workspace:*")) {
                     content = content.replace(/"@titanpl\/sdk": "workspace:\*"/g, '"@titanpl/sdk": "2.0.0"');
                     content = content.replace(/workspace:\*/g, "6.0.0");
+                    changed = true;
+                }
+                const baseName = name.split('/').pop().replace('@', '');
+                if (content.includes("@ext/go-extension")) {
+                    content = content.replace(/@ext\/go-extension/g, name);
+                    changed = true;
+                }
+                if (content.includes("github.com/ext/go-extension")) {
+                    content = content.replace(/github\.com\/ext\/go-extension/g, baseName);
+                    changed = true;
+                }
+                if (content.includes("go-extension")) {
+                    content = content.replace(/go-extension/g, baseName);
                     changed = true;
                 }
                 if (changed) {

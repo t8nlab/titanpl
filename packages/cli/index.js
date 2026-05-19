@@ -7,13 +7,17 @@ import { fileURLToPath } from "url";
 import { buildCommand } from "./src/commands/build.js";
 import { devCommand } from "./src/commands/dev.js";
 import { startCommand } from "./src/commands/start.js";
-import { migrateCommand } from "./src/commands/migrate.js";
 import { updateCommand } from "./src/commands/update.js";
 import { initCommand } from "./src/commands/init.js";
-
 import { createCommand } from "./src/commands/create.js";
 import { buildExtensionCommand } from "./src/commands/build-ext.js";
 import { runExtensionCommand } from "./src/commands/run-ext.js";
+import { buildHelp } from "./src/docs/build-help.js"
+import { extensionHelp } from "./src/docs/ext-help.js"
+import { initHelp } from "./src/docs/init-help.js"
+import { runHelp } from "./src/docs/run-help.js"
+import { updateHelp } from "./src/docs/update-help.js"
+
 
 /* -------------------------------------------------------
  * Resolve __dirname (ESM safe)
@@ -54,22 +58,43 @@ ${bold(cyan("╰─────────────────────�
 
   ${yellow("Usage:")} ${bold("titan <command> [options]")}
 
-  ${bold("Commands:")}
-    ${cyan("init")}      ${gray("Scaffold a new Titan project")}
-    ${cyan("create")}    ${gray("Create a new project or extension (e.g. 'titan create ext my-ext')")}
-    ${cyan("build")}     ${gray("Compile actions and build production dist. Use --release or -r for a production-ready folder.")}
-    ${cyan("run")}       ${gray("Run the production Gravity Engine or an extension sandbox")}
-    ${cyan("dev")}       ${gray("Start the Gravity Engine in dev/watch mode")}
-    ${cyan("start")}     ${gray("Start the production Gravity Engine")}
-    ${cyan("update")}    ${gray("Update an existing project to latest Titan version")}
-    ${cyan("migrate")}   ${gray("Migrate a legacy project to the new architecture")}
+${bold("Commands:")}
+  ${cyan("init")}      
+      ${gray("Scaffold a new TitanPl application with JS/TS or Hybrid Rust architecture")}
+
+  ${cyan("create")}    
+      ${gray("Generate TitanPl extensions, native modules, or reusable runtime packages")}
+
+  ${cyan("dev")}       
+      ${gray("Start the Gravity Engine in live development mode with hot reload and route watching")}
+
+  ${cyan("build")}     
+    ${gray("Compile Titan routes/actions into deployable runtime artifacts")}
+
+  ${cyan("build --release")} 
+    ${gray("Generate a fully optimized production release for deployment")}
+
+  ${cyan("build ext")} 
+      ${gray("Compile native, Go, or WASM TitanPl extensions into runtime-loadable binaries")}
+
+  ${cyan("run")}       
+      ${gray("Run a compiled TitanPl production server or execute extension sandboxes")}
+
+  ${cyan("run ext")}   
+      ${gray("Boot an isolated extension testing sandbox using TitanPl small server or standalone TGRV")}
+
+  ${cyan("start")}     
+      ${gray("Launch the production TitanPl Server from an existing build")}
+
+  ${cyan("update")}    
+      ${gray("Migrate TitanPl projects across framework versions, templates, configs, and runtime APIs")}
 
   ${bold("Options:")}
     ${cyan("-v, --version")}  ${gray("Output the current version")}
-    ${cyan("-h, --help")}     ${gray("Display this help message")}
+    ${cyan("-h, --help")}     ${gray("Display this help message or specific command help")}
 
 ${gray("  The Titan Planet Engine runs your JS/TS server natively without Node.js. ")}
-  ${cyan("https://titan-docs-ez.vercel.app")}
+  ${cyan("https://titanpl.vercel.app")}
 `);
 }
 
@@ -77,21 +102,16 @@ ${gray("  The Titan Planet Engine runs your JS/TS server natively without Node.j
  * CLI Router
  * ----------------------------------------------------- */
 process.title = "TitanPL";
+
+const args = process.argv.slice(2);
 const cmd = process.argv[2];
+const sub = args[1];
+
+const wantsHelp =
+  args.includes("--help") || args.includes("-h");
 
 (async () => {
   try {
-    // -------------------------------------------------------
-    // Legacy Check
-    // -------------------------------------------------------
-    if (cmd !== 'migrate' && cmd !== 'init') {
-      const legacyCargo = path.join(process.cwd(), "server", "Cargo.toml");
-      if (fs.existsSync(legacyCargo)) {
-        console.log(yellow(`\n⚠️ This project uses legacy server architecture. Migration recommended.`));
-        console.log(`Please run: ${bold(cyan('titan migrate'))}\n`);
-        process.exit(1);
-      }
-    }
 
     // -------------------------------------------------------
     // Old tit / titan detection note
@@ -101,6 +121,27 @@ const cmd = process.argv[2];
       console.log(yellow(`\n⚠️ [Notice]: \`tit\` is deprecated. Please use \`titan\` instead.\n`));
     }
 
+    if (wantsHelp) {
+      switch (cmd) {
+        case "build":
+          return buildHelp();
+
+        case "ext":
+          return extensionHelp();
+
+        case "update":
+          return updateHelp();
+
+        case "init":
+          return initHelp();
+
+        case "run":
+          return runHelp();
+
+        default:
+          return help();
+      }
+    }
 
     switch (cmd) {
       case "init": {
@@ -151,9 +192,12 @@ const cmd = process.argv[2];
         startCommand();
         break;
 
-      case "update":
-        await updateCommand();
+      case "update": {
+        const option = process.argv[3];
+        const value = process.argv[4];
+        await updateCommand(option, value);
         break;
+      }
 
       case "migrate":
         await migrateCommand();
@@ -174,3 +218,4 @@ const cmd = process.argv[2];
     process.exit(1);
   }
 })();
+

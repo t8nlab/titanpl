@@ -1,11 +1,13 @@
 [package]
-name = "my-extension-native"
+name = "rust_extension"
 version = "1.0.0"
 edition = "2021"
 
 [lib]
+name = "rust_extension"
 crate-type = ["cdylib"]
 
 [dependencies]
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
+ureq = "2.9"

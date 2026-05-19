@@ -1,7 +1,10 @@
 {
-  "name": "my-extension",
-  "version": "1.0.0",
-  "type": "wasm",
-  "entry": "index.js",
-  "description": "A high-performance TitanPL extension."
+    "//": "Change the name below to match your extension name",
+    "name": "@ext/rust-extension",
+    "type": "native",
+    "entry": "index.js",
+    "native": {
+        "windows": "rust-extension.dll",
+        "linux": "rust-extension.so"
+    }
 }

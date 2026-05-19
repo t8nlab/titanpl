@@ -1,16 +1,21 @@
 {
-  "name": "my-extension",
-  "version": "7.0.1",
-  "description": "A high-performance TitanPL extension.",
+  "name": "@ext/rust-extension",
+  "version": "1.0.0",
+  "description": "A high-performance TitanPL Rust native extension.",
   "type": "module",
   "main": "index.js",
+  "scripts": {
+    "build": "cargo build --release --manifest-path native/Cargo.toml && copy /y native\\target\\release\\rust_extension.dll rust-extension.dll",
+    "build:linux": "cargo build --release --manifest-path native/Cargo.toml && cp native/target/release/librust_extension.so rust-extension.so"
+  },
   "files": [
     "index.js",
+    "ext.js",
+    "index.d.ts",
     "titan.json",
     "jsconfig.json",
-    "README.md"
-  ],
-  "dependencies": {
-    "@titanpl/sdk": "7.0.1"
-  }
+    "README.md",
+    "utils/native.js",
+    "native/"
+  ]
 }
