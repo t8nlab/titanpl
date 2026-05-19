@@ -10,7 +10,7 @@
 
 <p align="center">
   <a href="https://www.npmjs.com/package/titanpl">
-    <img src="https://img.shields.io/npm/v/titanpl?style=for-the-badge&logo=npm&logoColor=white" />
+    <img src="https://img.shields.io/npm/v/@titanpl/engine-win32-x64?style=for-the-badge&logo=npm&logoColor=white" />
   </a>
 
   <img src="https://img.shields.io/badge/Runtime-Gravity(V8)%20%26%20Rust%20Tokio-1f2937?style=for-the-badge" />
