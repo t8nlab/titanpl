@@ -42,4 +42,4 @@ export const chat = (req) => {
 };
 ```
 
-**Important Note:** Currently, Titan Planet and its entire package ecosystem are only for Windows. The Linux version is in development (dev only) for the new architecture and will be launched later.
+**Important Note:** Currently, Titan Planet and its entire package ecosystem are only for Windows.
