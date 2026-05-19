@@ -1,5 +1,35 @@
 # Changelog - Titan Planet ⏣
 
+## [7.0.6 (Windows) / 7.0.8 (Linux)] - 2026-05-19
+
+### 🚀 Nested Route Organization & Background Task Cooldowns
+
+This release adds support for nested directories in the actions compiler, completes a new non-blocking task spawn rate-limiting cooldown system, and expands the monorepo contribution guide.
+
+### ✨ Highlights
+
+#### **Nested Action Folders & Recursive Discovery**
+* **Folder Organizing**: You can now structure your actions into subfolders (e.g., `app/actions/auth/login.js`). The bundler will scan recursively and bundle them into their exact nested locations (e.g., `dist/actions/auth/login.jsbundle`).
+* **Clean Slashes Mapping**: Route definitions automatically normalize paths (e.g., mapping `.action("auth/login.js")` to `"auth/login"`), preventing action registration failures.
+
+#### **Background Task Cooldown Rate-Limiter**
+* **Instant Start**: Background tasks spawned using `t.task.spawn()` now execute immediately, eliminating the thread blocking/sleeping delay model.
+* **Smart Cooldown**: The `delay` option is now evaluated as an active rate-limiting window. Spawns are rejected if triggered within the cooldown duration.
+* **Cooldown Feedback**: Check remaining milliseconds directly via the newly exposed `delayRemaining` property on the task status object.
+
+#### **Comprehensive Typings & JSDoc**
+* **Documentation Sync**: Synchronized the new `delay` and `delayRemaining` properties to TypeScript declarations inside `@titanpl/native`. Your editor will now display real-time rate-limit behavior documentation.
+
+#### **Monorepo Contribution Guide**
+* **Folder Architecture**: Added full documentation to `CONTRIBUTING.md` explaining the `engine`, `gravity`, and `packages/` directory layouts.
+* **Adding Features**: Step-by-step instructions on implementing a Rust native feature, registering it in V8, and creating the matching JavaScript bindings.
+
+### 🔧 Fixed
+* **Extension Slashes**: Fixed route matching discrepancies where trailing or internal slashes did not align with the compiled action bundle paths.
+* **Task Deduplication Logic**: Solved execution leaks by correctly rejecting spawns under active rate-limiting cooldowns.
+
+---
+
 ## [7.0.5-beta (Windows) / 7.0.7-beta (Linux)] - 2026-05-06
 
 ### 🚀 Runtime Stabilization & Native Bridge
