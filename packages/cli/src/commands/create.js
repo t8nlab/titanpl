@@ -117,7 +117,7 @@ function transformExtension(target, name, type) {
         pkg.version = "1.0.0";
         // Ensure dependencies
         pkg.dependencies = pkg.dependencies || {};
-        pkg.dependencies["@titanpl/sdk"] = "2.0.0";
+        pkg.dependencies["@titanpl/sdk"] = "latest";
         fs.writeFileSync(pkgPath, JSON.stringify(pkg, null, 2));
     }
 

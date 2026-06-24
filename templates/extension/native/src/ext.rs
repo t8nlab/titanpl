@@ -54,7 +54,7 @@ pub fn get_reader(path: &str) -> Result<Box<dyn Read>, String> {
             return Err(format!("failed to fetch cloud resource (HTTP {})", resp.status()));
         }
 
-        Ok(Box::new(resp.into_reader()))
+        Ok(Box::new(resp.into_body().into_reader()))
     } else {
         let file = File::open(path).map_err(|e| format!("failed to open file: {}", e))?;
         Ok(Box::new(file))
