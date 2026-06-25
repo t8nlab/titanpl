@@ -137,7 +137,7 @@ async function runTitanSandbox(titanJson) {
         `import Extension from '${titanJson.name}';
  import { defineAction } from '@titanpl/native';
 
-export default defineAction () {
+export default defineAction ((req) => {
     const ext = new Extension();
 
 
@@ -153,7 +153,7 @@ export default defineAction () {
         extension: 'my-ext',
         methods
     };
-}
+})
 `
     );
 
